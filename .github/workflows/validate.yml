@@ -1,0 +1,36 @@
+name: Validate EFI
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python -m compileall -q app.py
+      - run: python -m pytest -q
+      - name: Flask health and dashboard smoke
+        env:
+          APP_PASSWORD: integration-test-only
+          DATABASE_URL: sqlite:///test_efi_ci.db
+        run: |
+          python - <<'PY'
+          from app import app
+          from base64 import b64encode
+          from sqlalchemy import create_engine,text
+          c=app.test_client()
+          assert c.get('/health').status_code == 200
+          assert c.get('/').status_code == 401
+          headers={'Authorization':'Basic '+b64encode(b'operator:integration-test-only').decode()}
+          p=c.get('/',headers=headers)
+          assert p.status_code == 200, p.data[:500]
+          f=c.get('/fleet',headers=headers)
+          assert f.status_code == 200
+          assert b'ATU9D41' in f.data
+          print('EFI smoke OK')
+          PY
