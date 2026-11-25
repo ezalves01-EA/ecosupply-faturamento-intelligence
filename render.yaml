@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ecosupply-faturamento-intelligence
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /health
+    envVars:
+      - key: APP_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        sync: false
