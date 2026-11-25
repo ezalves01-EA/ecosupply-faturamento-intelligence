@@ -161,8 +161,8 @@ def index():
             "SELECT COALESCE(SUM(r.amount),0),COUNT(*),COUNT(DISTINCT r.billing_id),"
             "COALESCE(SUM(CASE WHEN r.plate IS NULL OR r.plate='' THEN 1 ELSE 0 END),0)"
             + base), params).one()
-        monthly_map = dict(db.execute(text(
-            "SELECT substr(r.billing_date,6,2),COALESCE(SUM(r.amount),0)" + base + " GROUP BY 1"),params))
+        monthly_map = {row[0]:row[1] for row in db.execute(text(
+            "SELECT substr(r.billing_date,6,2),COALESCE(SUM(r.amount),0)" + base + " GROUP BY 1"),params)}
         ranking = db.execute(text("SELECT "+DIMS[dim]+",COALESCE(SUM(r.amount),0),COUNT(*)"
             +base+" GROUP BY 1 ORDER BY 2 DESC LIMIT 200"),params).all()
         volumes = db.execute(text("SELECT r.unit,SUM(r.quantity),SUM(r.collected)"+base+" GROUP BY 1"),params).all()
