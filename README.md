@@ -1,0 +1,1 @@
+# ecosupply-faturamento-intelligence
