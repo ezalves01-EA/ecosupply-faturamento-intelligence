@@ -25,7 +25,7 @@ DIMS = {
     "city": "COALESCE(NULLIF(r.city,''),'Não identificada')",
     "state": "COALESCE(NULLIF(r.state,''),'Não identificado')",
     "region": "COALESCE(NULLIF(rg.region,''),'Não classificada')",
-    "branch": "COALESCE(NULLIF(r.branch,''),'Não identificada')",
+    "branch": "CASE WHEN UPPER(TRIM(r.branch)) IN ('CANAÃ NORTE RESÍDUOS LTDA','CANAÃ NORTE RESÍDUOS LTDA.','CANAÃ NORTE RESIDUOS LTDA','CANAÃ NORTE RESIDUOS LTDA.','ECOSUPPLY RECICLADORA DO NORTE LTDA','ECOSUPPLY RECICLADORA DO NORTE LTDA.') THEN 'ECOSUPPLY RECICLADORA DO NORTE LTDA.' ELSE COALESCE(NULLIF(r.branch,''),'Não identificada') END",
     "client": "COALESCE(NULLIF(r.client,''),'Não identificado')",
     "generator": "COALESCE(NULLIF(r.generator,''),'Não identificada')",
     "origin": "COALESCE(NULLIF(r.origin,''),'Não identificada')",
@@ -103,7 +103,7 @@ def conditions():
     for field in FILTERS:
         value = request.args.get(field, "")
         if value:
-            sql.append("r.transporter IN ('1','6')" if field=="transporter" and value in ("1","6") else "r." + field + "=:" + field)
+            sql.append("r.transporter IN ('1','6')" if field=="transporter" and value in ("1","6") else (DIMS["branch"] if field=="branch" else "r."+field) + "=:" + field)
             if not (field=="transporter" and value in ("1","6")):params[field] = value
     return " AND ".join(sql), params, year
 
@@ -190,6 +190,7 @@ def index():
         options = {field:[r[0] for r in db.execute(text("SELECT DISTINCT "+field+
                    " FROM revenue WHERE "+field+" IS NOT NULL AND "+field+"<>'' ORDER BY 1 LIMIT 400"))]
                    for field in FILTERS}
+        options["branch"]=[r[0] for r in db.execute(text("SELECT DISTINCT "+DIMS["branch"]+" FROM revenue r ORDER BY 1"))]
         options["transporter"]=sorted({("6" if v=="1" else v) for v in options["transporter"]})
     monthly = [(m,monthly_map.get(m,0)) for m in months]
     peak = max([float(v) for _,v in monthly]+[1])
@@ -210,6 +211,7 @@ def categories():
     with engine.connect() as db:
         rows=db.execute(text("SELECT "+dimension+",COALESCE(SUM(r.amount),0),COUNT(*)"+base+" GROUP BY 1 ORDER BY 2 DESC"),params).all()
         options={field:[r[0] for r in db.execute(text("SELECT DISTINCT "+field+" FROM revenue WHERE "+field+" IS NOT NULL AND "+field+"<>'' ORDER BY 1 LIMIT 400"))] for field in FILTERS}
+        options["branch"]=[r[0] for r in db.execute(text("SELECT DISTINCT "+DIMS["branch"]+" FROM revenue r ORDER BY 1"))]
         options["transporter"]=sorted({("6" if v=="1" else v) for v in options["transporter"]})
     total=sum(r[1] for r in rows)
     peak=max([abs(float(r[1])) for r in rows]+[1])
