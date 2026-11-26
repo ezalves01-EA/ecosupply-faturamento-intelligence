@@ -293,9 +293,34 @@ def sisgr_piloto():
     except Exception as exc:
         return jsonify(status="erro",tipo=type(exc).__name__,http=getattr(exc,"code",None)),502
 
+@app.get("/sisgr/anual")
+def annual_page():
+    from sisgr_annual import setup
+    setup(engine)
+    with engine.connect() as db:
+        rows=db.execute(text("SELECT month,pos,total,saved,existing,pending,status FROM efi_annual ORDER BY month")).all()
+        active=db.execute(text("SELECT active FROM efi_annual_control WHERE id=1")).scalar()
+    return render_template_string("""<meta charset="utf-8"><meta http-equiv="refresh" content="15"><h1>Carga anual 2026 — segundo plano</h1><a href="/">Dashboard</a> | <a href="/sisgr/mensal">Importação mensal</a><p>{{'Ativada' if active else 'Pausada'}}</p><form method="post"><button name="action" value="start">Iniciar / retomar 2026</button> <button name="action" value="pause">Pausar</button></form><table border="1" cellpadding="8"><tr><th>Mês</th><th>Posição</th><th>Total</th><th>Gravados</th><th>Existentes</th><th>Pendências</th><th>Status</th></tr>{% for row in rows %}<tr>{% for v in row %}<td>{{v}}</td>{% endfor %}</tr>{% endfor %}</table><p><a href="/sisgr/anual/pendencias">Consultar pendências</a></p><p>Atualização automática a cada 15 segundos. Pode fechar a página. Não execute importação manual simultaneamente.</p>""",rows=rows,active=active)
+
+@app.post("/sisgr/anual")
+def annual_action():
+    from sisgr_annual import start,pause,setup
+    setup(engine)
+    if request.form.get("action")=="start":start(engine)
+    elif request.form.get("action")=="pause":pause(engine)
+    return redirect("/sisgr/anual")
+
+@app.get("/sisgr/anual/pendencias")
+def annual_errors():
+    from sisgr_annual import setup
+    setup(engine)
+    with engine.connect() as db:
+        rows=db.execute(text("SELECT month,pos,detail FROM efi_annual_errors ORDER BY month,pos")).all()
+    return jsonify([dict(r._mapping) for r in rows])
+
 @app.get("/sisgr/mensal")
 def monthly_page():
-    return render_template_string("""<meta charset="utf-8"><h1>Importação mensal SISGR</h1><a href="/">Voltar ao dashboard</a><p>Importação experimental em lotes de 1 faturamento. Pendências não são gravadas.</p><form method="post"><label>Mês <input type="month" name="month" value="2026-11" required></label><label>Posição inicial <input type="number" name="offset" min="0" value="0" required></label><button>Importar lote</button></form><hr><label>Velocidade <select id="workers"><option value="1">Econômico</option><option value="3">Equilibrado</option><option value="5">Rápido</option><option value="10">Turbo — 10</option></select></label> <label>Modo <select id="mode"><option value="missing">Somente ausentes</option><option value="full">Completo — reprocessar</option></select></label> <button id="start">Iniciar importação automática</button> <button id="pause">Pausar</button><p id="progress"></p><progress id="bar" value="0" max="1"></progress><pre id="issues" style="white-space:pre-wrap"></pre><script src="/static/month-sync.js?v=08"></script>""")
+    return render_template_string("""<meta charset="utf-8"><h1>Importação mensal SISGR</h1><p><a href="/sisgr/anual">Carga anual 2026 em segundo plano</a></p><a href="/">Voltar ao dashboard</a><p>Importação experimental em lotes de 1 faturamento. Pendências não são gravadas.</p><form method="post"><label>Mês <input type="month" name="month" value="2026-11" required></label><label>Posição inicial <input type="number" name="offset" min="0" value="0" required></label><button>Importar lote</button></form><hr><label>Velocidade <select id="workers"><option value="1">Econômico</option><option value="3">Equilibrado</option><option value="5">Rápido</option><option value="10">Turbo — 10</option></select></label> <label>Modo <select id="mode"><option value="missing">Somente ausentes</option><option value="full">Completo — reprocessar</option></select></label> <button id="start">Iniciar importação automática</button> <button id="pause">Pausar</button><p id="progress"></p><progress id="bar" value="0" max="1"></progress><pre id="issues" style="white-space:pre-wrap"></pre><script src="/static/month-sync.js?v=08"></script>""")
 
 @app.post("/sisgr/lote")
 def monthly_batch_api():
