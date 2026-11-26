@@ -5,14 +5,19 @@ from decimal import Decimal
 from sqlalchemy import text
 from sisgr_sync import Client,build
 
-def run_batch(engine,fields,month,offset,limit=5):
+def run_batch(engine,fields,month,offset,limit=1):
     year,m=map(int,month.split("-"))
     start=date(year,m,1).isoformat();end=date(year,m,monthrange(year,m)[1]).isoformat()
     client=Client()
     # A lista completa é validada antes de selecionar o lote.
-    bills=sorted(client.listing("billing",{"registed_at$bw":start+","+end}),key=lambda b:int(b["id"]))
+    page=offset+1
+    payload=client.get("billing",{"registed_at$bw":start+","+end,"page":page,"per_page":1})
+    if isinstance(payload,list) and len(payload)==1 and "data" in payload[0]:payload=payload[0]
+    if int(payload["current_page"])!=page:raise ValueError("Página divergente")
+    bills=payload["data"]
+    total=int(payload["total"])
     if any(not start<=str(b["registed_at"])[:10]<=end for b in bills):raise ValueError("Filtro de período divergente")
-    batch=bills[offset:offset+limit]
+    batch=bills
     results=[]
     statement=text("INSERT INTO revenue ("+",".join(fields)+") VALUES ("+",".join(":"+f for f in fields)+") ON CONFLICT(item_id) DO UPDATE SET "+",".join(f+"=excluded."+f for f in fields[1:]))
     for bill in batch:
@@ -28,4 +33,4 @@ def run_batch(engine,fields,month,offset,limit=5):
             results.append({"id":bill["id"],"status":"gravado","audit":audit})
         except Exception as e:
             results.append({"id":bill["id"],"status":"erro","tipo":type(e).__name__,"http":getattr(e,"code",None)})
-    return {"total":len(bills),"next":offset+len(batch),"results":results}
+    return {"total":total,"next":offset+len(batch),"results":results}
