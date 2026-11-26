@@ -224,7 +224,35 @@ def unknown_city():
     where,params,year=conditions()
     with engine.connect() as db:
         rows=db.execute(text("SELECT r.billing_id,r.bm_id,r.item_id,r.client,r.service,r.transporter,r.schedule_id,r.collect_id,r.amount"+base_query(where)+" AND COALESCE(TRIM(r.city),'')='' ORDER BY r.amount DESC"),params).all()
-    return render_template_string("""<meta charset="utf-8"><h1>Cidades não identificadas</h1><a href="/">Voltar</a><p>{{rows|length}} itens — {{money(total)}}</p><table border="1" cellpadding="7"><tr>{% for h in ['Faturamento','BM','Item','Cliente','Serviço','Transportador','Agendamento','Coleta','Valor'] %}<th>{{h}}</th>{% endfor %}</tr>{% for r in rows %}<tr>{% for v in r %}<td>{{money(v) if loop.last else v}}</td>{% endfor %}</tr>{% endfor %}</table>""",rows=rows,money=money,total=sum(r[-1] or 0 for r in rows))
+    return render_template_string("""<meta charset="utf-8"><h1>Cidades não identificadas</h1><a href="/">Voltar</a><p>{{rows|length}} itens — {{money(total)}}</p><button id="repair">Reprocessar faturamentos sem cidade</button> <span id="progress"></span><pre id="repairlog"></pre><script>const ids={{ ids|tojson }};document.addEventListener("DOMContentLoaded",()=>{document.getElementById("repair").onclick=async()=>{const b=document.getElementById("repair"),p=document.getElementById("progress"),l=document.getElementById("repairlog");b.disabled=true;for(let i=0;i<ids.length;i++){p.textContent=(i+1)+" / "+ids.length;try{const r=await fetch("/auditoria/reprocessar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:ids[i]})});const j=await r.json();l.textContent+=ids[i]+": "+JSON.stringify(j)+String.fromCharCode(10)}catch(e){l.textContent+=ids[i]+": erro de comunicação"+String.fromCharCode(10)}}p.textContent="Concluído. Atualize a página para conferir.";b.disabled=false;}});</script><table border="1" cellpadding="7"><tr>{% for h in ['Faturamento','BM','Item','Cliente','Serviço','Transportador','Agendamento','Coleta','Valor'] %}<th>{{h}}</th>{% endfor %}</tr>{% for r in rows %}<tr>{% for v in r %}<td>{{money(v) if loop.last else v}}</td>{% endfor %}</tr>{% endfor %}</table>""",rows=rows,ids=list(dict.fromkeys(str(r[0]) for r in rows)),money=money,total=sum(r[-1] or 0 for r in rows))
+
+@app.post("/auditoria/reprocessar")
+def reprocess_city():
+    from sisgr_sync import Client,build
+    from sisgr_month import slots
+    bid=str((request.get_json(silent=True) or {}).get("id",""))
+    if not bid.isdigit():return jsonify(status="erro",motivo="ID inválido"),400
+    with slots:
+        try:
+            with engine.connect() as db:
+                if not db.execute(text("SELECT 1 FROM revenue WHERE billing_id=:id AND COALESCE(TRIM(city),'')='' LIMIT 1"),{"id":bid}).scalar():
+                    return jsonify(status="ignorado")
+            client=Client()
+            bill=client.detail("billing",bid)
+            rows,audit=build(client,[bill],FIELDS,lambda n,t:None)
+            if not rows or audit["issues"] or abs(Decimal(audit["bm_total"])-Decimal(audit["item_total"]))>Decimal("0.01"):
+                return jsonify(status="pendente",audit=audit)
+            statement=text("INSERT INTO revenue ("+",".join(FIELDS)+") VALUES ("+",".join(":"+f for f in FIELDS)+") ON CONFLICT(item_id) DO UPDATE SET "+",".join(f+"=excluded."+f for f in FIELDS[1:]))
+            with engine.begin() as db:
+                if engine.dialect.name=="postgresql":
+                    db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:id))"),{"id":bid})
+                for row in rows:
+                    row["plate"]=db.execute(text("SELECT plate FROM fleet WHERE vehicle_id=:id"),{"id":row["vehicle_id"]}).scalar() or ""
+                db.execute(text("DELETE FROM revenue WHERE billing_id=:id"),{"id":bid})
+                db.execute(statement,rows)
+            return jsonify(status="gravado",sem_cidade=sum(not r["city"] for r in rows),audit=audit)
+        except Exception as exc:
+            return jsonify(status="erro",tipo=type(exc).__name__),502
 
 @app.get("/geografia")
 def geografia():
