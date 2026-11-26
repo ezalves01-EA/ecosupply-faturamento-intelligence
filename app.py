@@ -148,7 +148,7 @@ a{color:#08795e}.upload{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 <tbody>{% for name,value,n in ranking %}<tr><td>{{name}}</td><td>{{money(value)}}</td><td>{{n}}</td></tr>{% endfor %}</tbody></table></section>
 <section><h2>Volumes por unidade</h2><table><thead><tr><th>Unidade</th><th>Faturado</th><th>Coletado</th></tr></thead><tbody>
 {% for unit,quantity,collected in volumes %}<tr><td>{{unit or 'Não informada'}}</td><td>{{quantity or 0}}</td><td>{{collected or 0}}</td></tr>{% endfor %}</tbody></table></section>
-<section><h2>Auditoria e importação</h2><p><a href="/sisgr/diagnostico">Testar conexão SISGR</a></p><p><a href="{{url_for('export_csv',**args.to_dict(flat=True))}}">Exportar CSV detalhado</a> · <a href="/fleet">Consultar frota oficial importada</a></p>
+<section><h2>Auditoria e importação</h2><p><a href="/sisgr/diagnostico">Testar conexão SISGR</a></p><form action="/sisgr/piloto" method="post"><button>Atualizar SISGR — prévia piloto</button></form><p><a href="{{url_for('export_csv',**args.to_dict(flat=True))}}">Exportar CSV detalhado</a> · <a href="/fleet">Consultar frota oficial importada</a></p>
 <p class="muted">O valor exibido é a soma dos itens importados, não uma confirmação do faturamento fiscal completo no SISGR.</p>
 <form class="upload" action="/import/revenue" method="post" enctype="multipart/form-data"><label>CSV de itens faturados <input type="file" name="file" accept=".csv" required></label><button>Importar ou atualizar</button></form></section></main></body></html>
 """
@@ -191,6 +191,21 @@ def sisgr_diagnostico():
 def sisgr_filtros():
     from sisgr_probe import test_filters
     return jsonify(test_filters())
+
+@app.post("/sisgr/piloto")
+def sisgr_piloto():
+    from sisgr_sync import Client,build
+    try:
+        client=Client()
+        bill=client.detail("billing",105595)
+        rows,audit=build(client,[bill],FIELDS,lambda n,total:None)
+        with engine.connect() as db:
+            for row in rows:
+                plate=db.execute(text("SELECT plate FROM fleet WHERE vehicle_id=:id"),{"id":row["vehicle_id"]}).scalar()
+                row["plate"]=plate or ""
+        return jsonify(audit=audit,rows=rows,mode="preview; nenhum dado gravado")
+    except Exception as exc:
+        return jsonify(status="erro",tipo=type(exc).__name__,http=getattr(exc,"code",None)),502
 
 @app.get("/health")
 def health():
