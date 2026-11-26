@@ -34,7 +34,7 @@ DIMS = {
     "plate": "COALESCE(NULLIF(r.plate,''),'Sem vínculo')",
     "vehicle_type": "COALESCE(NULLIF(f.vehicle_type,''),NULLIF(fp.vehicle_type,''),'Não classificado')",
     "driver": "COALESCE(NULLIF(r.driver,''),'Sem vínculo')",
-    "transporter": "CASE r.transporter WHEN '5' THEN '5 · ECOSUPPLY RECICLADORA LTDA.' WHEN '6' THEN '6 · ECOSUPPLY RECICLADORA DO NORTE LTDA.' ELSE COALESCE(NULLIF(r.transporter,''),'Sem vínculo') END",
+    "transporter": "CASE (CASE WHEN r.transporter='1' THEN '6' ELSE r.transporter END) WHEN '5' THEN '5 · ECOSUPPLY RECICLADORA LTDA.' WHEN '6' THEN '6 · ECOSUPPLY RECICLADORA DO NORTE LTDA.' ELSE COALESCE(NULLIF(r.transporter,''),'Sem vínculo') END",
 }
 LABELS = {"city":"Cidade", "state":"UF", "region":"Região", "branch":"Filial",
           "client":"Cliente", "generator":"Geradora", "origin":"Origem",
@@ -102,8 +102,8 @@ def conditions():
     for field in FILTERS:
         value = request.args.get(field, "")
         if value:
-            sql.append("r." + field + "=:" + field)
-            params[field] = value
+            sql.append("r.transporter IN ('1','6')" if field=="transporter" and value in ("1","6") else "r." + field + "=:" + field)
+            if not (field=="transporter" and value in ("1","6")):params[field] = value
     return " AND ".join(sql), params, year
 
 def base_query(where):
@@ -145,7 +145,7 @@ aside .brand img{mask-image:radial-gradient(ellipse 75% 75% at center,#000 54%,t
 <main><section id="overview"><form class="filters" method="get">
 <input name="year" value="{{year}}" size="5" aria-label="Ano">
 <select name="month"><option value="">Todos os meses</option>{% for m in months %}<option value="{{m}}" {% if args.get('month')==m %}selected{% endif %}>{{m}}</option>{% endfor %}</select>
-{% for k, values in options.items() %}<select name="{{k}}"><option value="">{{labels[k]}}: todos</option>{% for value in values %}<option value="{{value}}" {% if args.get(k)==value %}selected{% endif %}>{{value}}</option>{% endfor %}</select>{% endfor %}
+{% for k, values in options.items() %}<select name="{{k}}"><option value="">{{labels[k]}}: todos</option>{% for value in values %}<option value="{{value}}" {% if args.get(k)==value %}selected{% endif %}>{{"6 · ECOSUPPLY RECICLADORA DO NORTE LTDA." if k=="transporter" and value=="6" else "5 · ECOSUPPLY RECICLADORA LTDA." if k=="transporter" and value=="5" else value}}</option>{% endfor %}</select>{% endfor %}
 <select name="dim">{% for k in dims %}<option value="{{k}}" {% if dim==k %}selected{% endif %}>Por {{labels[k]}}</option>{% endfor %}</select>
 <button>Aplicar filtros</button></form></section>
 <section><div class="metrics"><article><div class="muted">Receita atribuída aos itens</div><div class="big">{{money(total)}}</div></article>
@@ -189,6 +189,7 @@ def index():
         options = {field:[r[0] for r in db.execute(text("SELECT DISTINCT "+field+
                    " FROM revenue WHERE "+field+" IS NOT NULL AND "+field+"<>'' ORDER BY 1 LIMIT 400"))]
                    for field in FILTERS}
+        options["transporter"]=sorted({("6" if v=="1" else v) for v in options["transporter"]})
     monthly = [(m,monthly_map.get(m,0)) for m in months]
     peak = max([float(v) for _,v in monthly]+[1])
     return render_template_string(HTML, year=year, args=request.args, options=options,
@@ -208,6 +209,7 @@ def categories():
     with engine.connect() as db:
         rows=db.execute(text("SELECT "+dimension+",COALESCE(SUM(r.amount),0),COUNT(*)"+base+" GROUP BY 1 ORDER BY 2 DESC"),params).all()
         options={field:[r[0] for r in db.execute(text("SELECT DISTINCT "+field+" FROM revenue WHERE "+field+" IS NOT NULL AND "+field+"<>'' ORDER BY 1 LIMIT 400"))] for field in FILTERS}
+        options["transporter"]=sorted({("6" if v=="1" else v) for v in options["transporter"]})
     total=sum(r[1] for r in rows)
     peak=max([abs(float(r[1])) for r in rows]+[1])
     args=request.args.to_dict(flat=True)
@@ -262,7 +264,7 @@ def sisgr_piloto():
 
 @app.get("/sisgr/mensal")
 def monthly_page():
-    return render_template_string("""<meta charset="utf-8"><h1>Importação mensal SISGR</h1><a href="/">Voltar ao dashboard</a><p>Importação experimental em lotes de 1 faturamento. Pendências não são gravadas.</p><form method="post"><label>Mês <input type="month" name="month" value="2026-11" required></label><label>Posição inicial <input type="number" name="offset" min="0" value="0" required></label><button>Importar lote</button></form><hr><button id="start">Iniciar importação automática</button> <button id="pause">Pausar</button><p id="progress"></p><progress id="bar" value="0" max="1"></progress><pre id="issues" style="white-space:pre-wrap"></pre><script src="/static/month-sync.js"></script>""")
+    return render_template_string("""<meta charset="utf-8"><h1>Importação mensal SISGR</h1><a href="/">Voltar ao dashboard</a><p>Importação experimental em lotes de 1 faturamento. Pendências não são gravadas.</p><form method="post"><label>Mês <input type="month" name="month" value="2026-11" required></label><label>Posição inicial <input type="number" name="offset" min="0" value="0" required></label><button>Importar lote</button></form><hr><label>Velocidade <select id="workers"><option value="1">Econômico</option><option value="3">Equilibrado</option><option value="5">Rápido</option><option value="10">Turbo — 10</option></select></label> <label>Modo <select id="mode"><option value="missing">Somente ausentes</option><option value="full">Completo — reprocessar</option></select></label> <button id="start">Iniciar importação automática</button> <button id="pause">Pausar</button><p id="progress"></p><progress id="bar" value="0" max="1"></progress><pre id="issues" style="white-space:pre-wrap"></pre><script src="/static/month-sync.js"></script>""")
 
 @app.post("/sisgr/lote")
 def monthly_batch_api():
@@ -271,7 +273,7 @@ def monthly_batch_api():
         month=request.form["month"]
         offset=int(request.form.get("offset",0))
         if len(month)!=7 or not month.startswith("2026-") or offset<0:raise ValueError()
-        return jsonify(run_batch(engine,FIELDS,month,offset))
+        return jsonify(run_batch(engine,FIELDS,month,offset,mode=request.form.get("mode","full")))
     except Exception as exc:
         return jsonify(status="erro",tipo=type(exc).__name__,http=getattr(exc,"code",None)),502
 
