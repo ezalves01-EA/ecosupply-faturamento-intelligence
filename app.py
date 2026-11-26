@@ -18,7 +18,7 @@ engine = create_engine(db_url, pool_pre_ping=True)
 FIELDS = ["item_id", "billing_id", "bm_id", "billing_date", "operation_date",
           "branch", "client", "generator", "city", "state", "origin",
           "product", "service", "unit", "collected", "quantity", "amount",
-          "vehicle_id", "plate", "driver", "transporter", "schedule_id", "collect_id"]
+          "vehicle_id", "plate", "driver", "transporter", "schedule_id", "collect_id", "scheduled_date", "attendance_start", "attendance_end", "due_date"]
 NUMERIC = {"collected", "quantity", "amount"}
 FILTERS = ["branch", "state", "city", "plate", "driver", "transporter", "origin", "product", "service"]
 DIMS = {
@@ -50,6 +50,11 @@ def setup_database():
         db.execute(text("CREATE TABLE IF NOT EXISTS fleet_plates (plate VARCHAR(20) PRIMARY KEY, vehicle_type VARCHAR(100) NOT NULL)"))
         db.execute(text("CREATE TABLE IF NOT EXISTS regions (city VARCHAR(200) NOT NULL, state VARCHAR(5) NOT NULL, region VARCHAR(150), PRIMARY KEY(city,state))"))
         db.execute(text("CREATE TABLE IF NOT EXISTS revenue (item_id VARCHAR(150) PRIMARY KEY, billing_id VARCHAR(80) NOT NULL, bm_id VARCHAR(80), billing_date VARCHAR(10) NOT NULL, operation_date VARCHAR(10), branch VARCHAR(150), client VARCHAR(250), generator VARCHAR(250), city VARCHAR(150), state VARCHAR(5), origin VARCHAR(80), product VARCHAR(250), service VARCHAR(250), unit VARCHAR(30), collected NUMERIC(20,4), quantity NUMERIC(20,4), amount NUMERIC(20,2), vehicle_id VARCHAR(40), plate VARCHAR(20), driver VARCHAR(250), transporter VARCHAR(250), schedule_id VARCHAR(80), collect_id VARCHAR(80))"))
+        from sqlalchemy import inspect
+        existing = {c["name"] for c in inspect(db).get_columns("revenue")}
+        for column in ("scheduled_date", "attendance_start", "attendance_end", "due_date"):
+            if column not in existing:
+                db.execute(text("ALTER TABLE revenue ADD COLUMN " + column + " VARCHAR(40)"))
         source = ROOT / "data" / "veiculos_exportados.json"
         if source.exists():
             vehicles = json.loads(source.read_text(encoding="utf-8"))["vehicles"]
@@ -210,6 +215,8 @@ def import_revenue():
                 if not values["item_id"] or not values["billing_id"]:
                     raise ValueError("IDs obrigatórios ausentes na linha "+str(number))
                 date.fromisoformat(values["billing_date"])
+                if values["attendance_end"]:
+                    values["operation_date"] = values["attendance_end"][:10]
                 if values["operation_date"]:
                     date.fromisoformat(values["operation_date"])
                 values["plate"] = norm_plate(values["plate"])
