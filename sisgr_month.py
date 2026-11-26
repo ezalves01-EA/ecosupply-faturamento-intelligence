@@ -18,7 +18,7 @@ def run_batch(engine,fields,month,offset,limit=1,mode="full"):
 def _run_batch(engine,fields,month,offset,mode):
     year,m=map(int,month.split("-"))
     start=date(year,m,1).isoformat();end=date(year,m,monthrange(year,m)[1]).isoformat()
-    client=Client()
+    client=Client(engine if mode=='missing' else None)
     page=offset//_page_size+1
     key=(month,page)
     with _page_lock:
