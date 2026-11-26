@@ -3,7 +3,11 @@ from datetime import date
 from calendar import monthrange
 from decimal import Decimal
 from sqlalchemy import text
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Lock
+from time import monotonic
+_page_lock=Lock()
+_pages={}
+_page_size=100
 slots=BoundedSemaphore(3)
 from sisgr_sync import Client,build
 
@@ -15,13 +19,22 @@ def _run_batch(engine,fields,month,offset,mode):
     year,m=map(int,month.split("-"))
     start=date(year,m,1).isoformat();end=date(year,m,monthrange(year,m)[1]).isoformat()
     client=Client()
-    # A lista completa é validada antes de selecionar o lote.
-    page=offset+1
-    payload=client.get("billing",{"registed_at$bw":start+","+end,"page":page,"per_page":1})
-    if isinstance(payload,list) and len(payload)==1 and "data" in payload[0]:payload=payload[0]
-    if int(payload["current_page"])!=page:raise ValueError("Página divergente")
-    bills=payload["data"]
+    page=offset//_page_size+1
+    key=(month,page)
+    with _page_lock:
+        cached=_pages.get(key)
+        if not cached or monotonic()-cached[0]>300:
+            payload=client.get("billing",{"registed_at$bw":start+","+end,"page":page,"per_page":_page_size})
+            if isinstance(payload,list) and len(payload)==1 and "data" in payload[0]:payload=payload[0]
+            if int(payload["current_page"])!=page:raise ValueError("Página divergente")
+            total=int(payload["total"])
+            if len(payload["data"])!=max(0,min(_page_size,total-(page-1)*_page_size)):raise ValueError("Tamanho de página divergente")
+            if len({b['id'] for b in payload['data']})!=len(payload['data']):raise ValueError("IDs duplicados na página")
+            if len(_pages)>100:_pages.clear()
+            _pages[key]=(monotonic(),payload)
+        else:payload=cached[1]
     total=int(payload["total"])
+    bills=payload["data"][offset%_page_size:offset%_page_size+1]
     if any(not start<=str(b["registed_at"])[:10]<=end for b in bills):raise ValueError("Filtro de período divergente")
     batch=bills
     results=[]
