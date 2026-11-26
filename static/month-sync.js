@@ -2,6 +2,7 @@
 const month=document.querySelector('[name=month]'),offset=document.querySelector('[name=offset]'),progress=document.getElementById('progress'),bar=document.getElementById('bar'),issues=document.getElementById('issues'),start=document.getElementById('start'),workers=document.getElementById('workers'),mode=document.getElementById('mode');
 let running=false,busy=false;
 const key=()=> 'efi-position-'+month.value;
+const recovery=document.createElement('button');recovery.textContent='Reprocessar falhas e ausentes';recovery.type='button';start.after(recovery);recovery.onclick=()=>{if(busy)return;offset.value=0;mode.value='missing';workers.value='3';start.click();};
 const restore=()=>{offset.value=localStorage.getItem(key())||'0';};
 month.onchange=restore;restore();
 document.getElementById('pause').onclick=()=>{running=false;progress.textContent+=' — aguardando lotes ativos';};
@@ -13,7 +14,7 @@ return res.json();
 }
 start.onclick=async()=>{
 if(busy)return;busy=true;running=true;start.disabled=true;month.disabled=offset.disabled=workers.disabled=mode.disabled=true;
-const period=month.value,kind=mode.value,initial=Number(offset.value),started=Date.now();let position=initial,total=null,saved=0,existing=0,pending=0,parallel=Number(workers.value),failures=0;
+const period=month.value,kind=mode.value,initial=Number(offset.value),started=Date.now();let position=initial,total=null,saved=0,existing=0,pending=0,parallel=Math.min(3,Number(workers.value)),failures=0;
 try{
 while(running){
 const size=total===null?1:Math.min(parallel,total-position);
@@ -26,8 +27,9 @@ if(x.status==='rejected'){blocked=true;issues.textContent+='Posição '+(positio
 const r=x.value;total=r.total;
 if(r.next!==position+i+1){blocked=true;continue;}
 for(const item of r.results){
-if(item.status==='gravado')saved++;else if(item.status==='existente')existing++;else{pending++;issues.textContent+=JSON.stringify(item)+'\n';localStorage.setItem('efi-pending-'+period+'-'+item.id,JSON.stringify(item));}
+if(item.status==='gravado'){saved++;localStorage.removeItem('efi-pending-'+period+'-'+item.id);for(const warning of (item.audit?.warnings||[]))issues.textContent+='AVISO '+item.id+': '+warning+'\n';}else if(item.status==='existente')existing++;else{pending++;issues.textContent+=JSON.stringify(item)+'\n';localStorage.setItem('efi-pending-'+period+'-'+item.id,JSON.stringify(item));}
 }
+if(r.results.some(item=>item.status==='erro')){blocked=true;}
 if(!blocked)advanced++;
 }
 position+=advanced;offset.value=position;localStorage.setItem(key(),String(position));
