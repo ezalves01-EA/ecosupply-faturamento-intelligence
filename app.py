@@ -187,6 +187,11 @@ def sisgr_diagnostico():
     from sisgr_probe import probe
     return jsonify(probe())
 
+@app.get("/sisgr/filtros")
+def sisgr_filtros():
+    from sisgr_probe import test_filters
+    return jsonify(test_filters())
+
 @app.get("/health")
 def health():
     with engine.connect() as db:
