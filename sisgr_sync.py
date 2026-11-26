@@ -65,7 +65,7 @@ def build(client,bills,fields,progress):
                     issues.append("Vínculo divergente item "+str(i["id"]));sid=None
                 s=client.detail("schedules",sid)
                 if canceled(s):issues.append("Agendamento cancelado item "+str(i["id"]));s={}
-                g=client.detail("generators",s.get("generator_id") or i.get("generator_id"))
+                g=client.detail("generators",s.get("generator_id") or i.get("generator_id") or bm.get("generator_id"))
                 driver=client.detail("professionals",s.get("motoristaIniciouAtendimento_id") or s.get("driver_id"))
                 address=g.get("address") or {};city=address.get("city") or {};state=city.get("state") or {} if isinstance(city,dict) else {}
                 uf=state.get("uf") or state.get("sigla") or "" if isinstance(state,dict) else state
