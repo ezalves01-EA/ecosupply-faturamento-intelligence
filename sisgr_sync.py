@@ -126,7 +126,23 @@ def build(client,bills,fields,progress):
                 else:
                     warnings.append("Franquia sem atribuição segura: "+row["item_id"])
                     row["product"]="Franquia — sem atribuição operacional"
-            expected=dec(bm.get("total_value"));bm_total+=expected
+            if bm.get("total_value") in (None,""):
+                issues.append("BM "+str(bm["id"])+" sem valor oficial")
+                continue
+            expected=dec(bm["total_value"]);bm_total+=expected
             if subtotal!=expected:
-                (warnings if abs(subtotal-expected)<=Decimal("0.01") else issues).append("BM "+str(bm["id"])+" diferença "+str(expected-subtotal))
+                warnings.append("BM "+str(bm["id"])+" conciliado: itens "+str(subtotal)+" / oficial "+str(expected))
+                if expected==0:
+                    for row in bm_rows:row["amount"]=Decimal(0)
+                elif subtotal!=0 and bm_rows:
+                    # Distribuição proporcional, com resíduo de arredondamento no maior item.
+                    anchor=max(bm_rows,key=lambda r:abs(r["amount"]))
+                    for row in bm_rows:
+                        row["amount"]=(row["amount"]*expected/subtotal).quantize(Decimal("0.01"))
+                    anchor["amount"]+=expected-sum((r["amount"] for r in bm_rows),Decimal(0))
+                else:
+                    # Sem base monetária para rateio: receita sem atribuição operacional.
+                    row=dict.fromkeys(fields,"")
+                    row.update(item_id="bm-ajuste-"+str(bm["id"]),billing_id=str(b["id"]),bm_id=str(bm["id"]),billing_date=str(b["registed_at"])[:10],due_date=str(b.get("due_date") or "")[:10],branch=name(b.get("company")),client=name(b.get("client")),origin="AJUSTE",product="Receita sem atribuição operacional",service="Conciliação do valor oficial do BM",collected=Decimal(0),quantity=Decimal(0),amount=expected)
+                    rows.append(row)
     return rows,{"bills":len(bills),"items":len(rows),"bm_total":str(bm_total),"item_total":str(sum((r["amount"] for r in rows),Decimal(0))),"issues":issues,"warnings":warnings}
