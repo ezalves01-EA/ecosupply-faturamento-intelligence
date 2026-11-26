@@ -34,7 +34,7 @@ DIMS = {
     "plate": "COALESCE(NULLIF(r.plate,''),'Sem vínculo')",
     "vehicle_type": "COALESCE(NULLIF(f.vehicle_type,''),NULLIF(fp.vehicle_type,''),'Não classificado')",
     "driver": "COALESCE(NULLIF(r.driver,''),'Sem vínculo')",
-    "transporter": "CASE (CASE WHEN r.transporter='1' THEN '6' ELSE r.transporter END) WHEN '5' THEN '5 · ECOSUPPLY RECICLADORA LTDA.' WHEN '6' THEN '6 · ECOSUPPLY RECICLADORA DO NORTE LTDA.' ELSE COALESCE(NULLIF(r.transporter,''),'Sem vínculo') END",
+    "transporter": "CASE (CASE WHEN r.transporter IN ('1','3','6') THEN '6' ELSE r.transporter END) WHEN '5' THEN '5 · ECOSUPPLY RECICLADORA LTDA.' WHEN '6' THEN '6 · ECOSUPPLY RECICLADORA DO NORTE LTDA.' ELSE COALESCE(NULLIF(r.transporter,''),'Sem vínculo') END",
 }
 LABELS = {"city":"Cidade", "state":"UF", "region":"Região", "branch":"Filial",
           "client":"Cliente", "generator":"Geradora", "origin":"Origem",
@@ -103,8 +103,8 @@ def conditions():
     for field in FILTERS:
         value = request.args.get(field, "")
         if value:
-            sql.append("r.transporter IN ('1','6')" if field=="transporter" and value in ("1","6") else (DIMS["branch"] if field=="branch" else "r."+field) + "=:" + field)
-            if not (field=="transporter" and value in ("1","6")):params[field] = value
+            sql.append("r.transporter IN ('1','3','6')" if field=="transporter" and value in ("1","3","6") else (DIMS["branch"] if field=="branch" else "r."+field) + "=:" + field)
+            if not (field=="transporter" and value in ("1","3","6")):params[field] = value
     return " AND ".join(sql), params, year
 
 def base_query(where):
@@ -191,7 +191,7 @@ def index():
                    " FROM revenue WHERE "+field+" IS NOT NULL AND "+field+"<>'' ORDER BY 1 LIMIT 400"))]
                    for field in FILTERS}
         options["branch"]=[r[0] for r in db.execute(text("SELECT DISTINCT "+DIMS["branch"]+" FROM revenue r ORDER BY 1"))]
-        options["transporter"]=sorted({("6" if v=="1" else v) for v in options["transporter"]})
+        options["transporter"]=sorted({("6" if v in ("1","3","6") else v) for v in options["transporter"]})
     monthly = [(m,monthly_map.get(m,0)) for m in months]
     peak = max([float(v) for _,v in monthly]+[1])
     return render_template_string(HTML, year=year, args=request.args, options=options,
@@ -212,7 +212,7 @@ def categories():
         rows=db.execute(text("SELECT "+dimension+",COALESCE(SUM(r.amount),0),COUNT(*)"+base+" GROUP BY 1 ORDER BY 2 DESC"),params).all()
         options={field:[r[0] for r in db.execute(text("SELECT DISTINCT "+field+" FROM revenue WHERE "+field+" IS NOT NULL AND "+field+"<>'' ORDER BY 1 LIMIT 400"))] for field in FILTERS}
         options["branch"]=[r[0] for r in db.execute(text("SELECT DISTINCT "+DIMS["branch"]+" FROM revenue r ORDER BY 1"))]
-        options["transporter"]=sorted({("6" if v=="1" else v) for v in options["transporter"]})
+        options["transporter"]=sorted({("6" if v in ("1","3","6") else v) for v in options["transporter"]})
     total=sum(r[1] for r in rows)
     peak=max([abs(float(r[1])) for r in rows]+[1])
     args=request.args.to_dict(flat=True)
