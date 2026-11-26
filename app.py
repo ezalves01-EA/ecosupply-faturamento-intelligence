@@ -155,7 +155,7 @@ a{color:#08795e}.upload{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 <tbody>{% for name,value,n in ranking %}<tr><td>{{name}}</td><td>{{money(value)}}</td><td>{{n}}</td></tr>{% endfor %}</tbody></table></section>
 <section><h2>Mapa de faturamento — Mato Grosso</h2><select id="mapmode"><option value="city">Por cidade</option><option value="region">Por região</option></select><p id="mapinfo" class="muted">Selecione uma cidade no mapa.</p><svg id="revenue-map" viewBox="0 0 800 650" style="width:100%;max-height:650px"></svg><p class="muted">Malha da logística: MT. Demais estados permanecem nas tabelas.</p></section><script>const mapRows={{maprows|tojson}};</script><script src="/static/revenue-map.js"></script><section><h2>Volumes por unidade</h2><table><thead><tr><th>Unidade</th><th>Quantidade dos itens de coleta</th><th>Coletado</th></tr></thead><tbody>
 {% for unit,quantity,collected in volumes %}<tr><td>{{unit or 'Não informada'}}</td><td>{{number(quantity)}}</td><td>{{number(collected)}}</td></tr>{% endfor %}</tbody></table></section>
-<section><h2>Auditoria e importação</h2><p><a href="/sisgr/diagnostico">Testar conexão SISGR</a></p><form action="/sisgr/piloto" method="post"><button>Atualizar SISGR — prévia piloto</button></form><form action="/sisgr/piloto" method="post"><input type="hidden" name="save" value="1"><button>Gravar faturamento piloto 105595</button></form><p><a href="{{url_for('export_csv',**args.to_dict(flat=True))}}">Exportar CSV detalhado</a> · <a href="/fleet">Consultar frota oficial importada</a></p>
+<section><h2>Auditoria e importação</h2><p><a href="/sisgr/mensal">Importação mensal — lotes de teste</a></p><p><a href="/sisgr/diagnostico">Testar conexão SISGR</a></p><form action="/sisgr/piloto" method="post"><button>Atualizar SISGR — prévia piloto</button></form><form action="/sisgr/piloto" method="post"><input type="hidden" name="save" value="1"><button>Gravar faturamento piloto 105595</button></form><p><a href="{{url_for('export_csv',**args.to_dict(flat=True))}}">Exportar CSV detalhado</a> · <a href="/fleet">Consultar frota oficial importada</a></p>
 <p class="muted">O valor exibido é a soma dos itens importados, não uma confirmação do faturamento fiscal completo no SISGR.</p>
 <form class="upload" action="/import/revenue" method="post" enctype="multipart/form-data"><label>CSV de itens faturados <input type="file" name="file" accept=".csv" required></label><button>Importar ou atualizar</button></form></section></main></body></html>
 """
@@ -224,6 +224,23 @@ def sisgr_piloto():
                 db.execute(statement,rows)
             return redirect("/?year=2026&month=11")
         return jsonify(audit=audit,rows=rows,mode="preview; nenhum dado gravado")
+    except Exception as exc:
+        return jsonify(status="erro",tipo=type(exc).__name__,http=getattr(exc,"code",None)),502
+
+@app.get("/sisgr/mensal")
+def monthly_page():
+    return render_template_string("""<meta charset="utf-8"><h1>Importação mensal SISGR</h1><a href="/">Voltar ao dashboard</a><p>Importação experimental em lotes de 5 faturamentos. Pendências não são gravadas.</p><form method="post"><label>Mês <input type="month" name="month" value="2026-11" required></label><label>Posição inicial <input type="number" name="offset" min="0" value="0" required></label><button>Importar lote</button></form>""")
+
+@app.post("/sisgr/mensal")
+def monthly_import():
+    from sisgr_month import run_batch
+    try:
+        month=request.form["month"]
+        if len(month)!=7 or not month.startswith("2026-"):raise ValueError()
+        offset=int(request.form.get("offset",0))
+        if offset<0:raise ValueError()
+        result=run_batch(engine,FIELDS,month,offset)
+        return render_template_string("""<meta charset="utf-8"><h1>Resultado do lote</h1><p>Posição {{r.next}} de {{r.total}} faturamentos listados</p><pre style="white-space:pre-wrap">{{r.results|tojson(indent=2)}}</pre>{% if r.next<r.total %}<form method="post"><input type="hidden" name="month" value="{{month}}"><input type="hidden" name="offset" value="{{r.next}}"><button>Importar próximo lote</button></form>{% endif %}<a href="/">Voltar ao dashboard</a>""",r=result,month=month)
     except Exception as exc:
         return jsonify(status="erro",tipo=type(exc).__name__,http=getattr(exc,"code",None)),502
 
