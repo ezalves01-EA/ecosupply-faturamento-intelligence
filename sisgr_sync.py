@@ -128,10 +128,12 @@ def build(client,bills,fields,progress):
                     row["product"]="Franquia — sem atribuição operacional"
             # Serviços complementares herdam somente dimensões consensuais
             # dos itens operacionais do mesmo BM, sem copiar volume ou coleta.
-            operational=[r for r in bm_rows if r["origin"].strip().upper() in ("COLETA","DESTINAÇÃO","DESTINACAO") and "FRANQUIA" not in r["service"].upper()]
+            allowed_services={"DESLOCAMENTO","SERVIÇO GERENCIAL","SERVICO GERENCIAL","SERVIÇO DE HIDROJATEAMENTO","SERVICO DE HIDROJATEAMENTO"}
+            operational=[r for r in bm_rows if r["origin"].strip().upper()=="COLETA" and "FRANQUIA" not in r["service"].upper()]
             for row in bm_rows:
                 if row["origin"].strip().upper() not in ("SERVIÇO","SERVICO") or row["schedule_id"]:continue
-                if not operational:continue
+                if " ".join(row["service"].upper().split()) not in allowed_services:continue
+                if not operational or not all(r["schedule_id"] and r["collect_id"] for r in operational):continue
                 for field in dimensions:
                     vals={r[field] for r in operational}
                     if len(vals)==1 and next(iter(vals)) and not row[field]:
