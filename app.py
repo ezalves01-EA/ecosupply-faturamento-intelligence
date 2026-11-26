@@ -229,7 +229,18 @@ def sisgr_piloto():
 
 @app.get("/sisgr/mensal")
 def monthly_page():
-    return render_template_string("""<meta charset="utf-8"><h1>Importação mensal SISGR</h1><a href="/">Voltar ao dashboard</a><p>Importação experimental em lotes de 1 faturamento. Pendências não são gravadas.</p><form method="post"><label>Mês <input type="month" name="month" value="2026-11" required></label><label>Posição inicial <input type="number" name="offset" min="0" value="0" required></label><button>Importar lote</button></form>""")
+    return render_template_string("""<meta charset="utf-8"><h1>Importação mensal SISGR</h1><a href="/">Voltar ao dashboard</a><p>Importação experimental em lotes de 1 faturamento. Pendências não são gravadas.</p><form method="post"><label>Mês <input type="month" name="month" value="2026-11" required></label><label>Posição inicial <input type="number" name="offset" min="0" value="0" required></label><button>Importar lote</button></form><hr><button id="start">Iniciar importação automática</button> <button id="pause">Pausar</button><p id="progress"></p><progress id="bar" value="0" max="1"></progress><pre id="issues" style="white-space:pre-wrap"></pre><script src="/static/month-sync.js"></script>""")
+
+@app.post("/sisgr/lote")
+def monthly_batch_api():
+    from sisgr_month import run_batch
+    try:
+        month=request.form["month"]
+        offset=int(request.form.get("offset",0))
+        if len(month)!=7 or not month.startswith("2026-") or offset<0:raise ValueError()
+        return jsonify(run_batch(engine,FIELDS,month,offset))
+    except Exception as exc:
+        return jsonify(status="erro",tipo=type(exc).__name__,http=getattr(exc,"code",None)),502
 
 @app.post("/sisgr/mensal")
 def monthly_import():
