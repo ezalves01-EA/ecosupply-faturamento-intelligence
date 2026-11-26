@@ -115,6 +115,13 @@ def base_query(where):
 def money(value):
     return "R$ " + f"{float(value or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+def number(value):
+    return f"{float(value or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def map_data(db,base,params):
+    rows=db.execute(text("SELECT r.city,r.state,SUM(r.amount),SUM(CASE WHEN UPPER(r.unit)='KG' THEN r.collected ELSE 0 END),SUM(CASE WHEN UPPER(r.unit)='L' THEN r.collected ELSE 0 END)"+base+" GROUP BY 1,2"),params)
+    return [{"city":r[0],"state":r[1],"amount":float(r[2] or 0),"kg":float(r[3] or 0),"liters":float(r[4] or 0)} for r in rows]
+
 HTML = """
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EFI • Inteligência de Faturamento</title>
@@ -146,8 +153,8 @@ a{color:#08795e}.upload{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 <section><h2>Faturamento por mês — {{year}}</h2><div class="bars">{% for m,v in monthly %}<div class="barrow"><span>{{m}}</span><b>{{money(v)}}</b></div><div class="barbg"><div class="bar" style="width:{{pct(v,peak)}}%"></div></div>{% endfor %}</div></section>
 <section><h2>Faturamento por {{labels[dim]}}</h2><table><thead><tr><th>Grupo</th><th>Receita</th><th>Itens</th></tr></thead>
 <tbody>{% for name,value,n in ranking %}<tr><td>{{name}}</td><td>{{money(value)}}</td><td>{{n}}</td></tr>{% endfor %}</tbody></table></section>
-<section><h2>Volumes por unidade</h2><table><thead><tr><th>Unidade</th><th>Quantidade dos itens de coleta</th><th>Coletado</th></tr></thead><tbody>
-{% for unit,quantity,collected in volumes %}<tr><td>{{unit or 'Não informada'}}</td><td>{{quantity or 0}}</td><td>{{collected or 0}}</td></tr>{% endfor %}</tbody></table></section>
+<section><h2>Mapa de faturamento — Mato Grosso</h2><select id="mapmode"><option value="city">Por cidade</option><option value="region">Por região</option></select><p id="mapinfo" class="muted">Selecione uma cidade no mapa.</p><svg id="revenue-map" viewBox="0 0 800 650" style="width:100%;max-height:650px"></svg><p class="muted">Malha da logística: MT. Demais estados permanecem nas tabelas.</p></section><script>const mapRows={{maprows|tojson}};</script><script src="/static/revenue-map.js"></script><section><h2>Volumes por unidade</h2><table><thead><tr><th>Unidade</th><th>Quantidade dos itens de coleta</th><th>Coletado</th></tr></thead><tbody>
+{% for unit,quantity,collected in volumes %}<tr><td>{{unit or 'Não informada'}}</td><td>{{number(quantity)}}</td><td>{{number(collected)}}</td></tr>{% endfor %}</tbody></table></section>
 <section><h2>Auditoria e importação</h2><p><a href="/sisgr/diagnostico">Testar conexão SISGR</a></p><form action="/sisgr/piloto" method="post"><button>Atualizar SISGR — prévia piloto</button></form><form action="/sisgr/piloto" method="post"><input type="hidden" name="save" value="1"><button>Gravar faturamento piloto 105595</button></form><p><a href="{{url_for('export_csv',**args.to_dict(flat=True))}}">Exportar CSV detalhado</a> · <a href="/fleet">Consultar frota oficial importada</a></p>
 <p class="muted">O valor exibido é a soma dos itens importados, não uma confirmação do faturamento fiscal completo no SISGR.</p>
 <form class="upload" action="/import/revenue" method="post" enctype="multipart/form-data"><label>CSV de itens faturados <input type="file" name="file" accept=".csv" required></label><button>Importar ou atualizar</button></form></section></main></body></html>
@@ -170,7 +177,8 @@ def index():
             "SELECT substr(r.billing_date,6,2),COALESCE(SUM(r.amount),0)" + base + " GROUP BY 1"),params)}
         ranking = db.execute(text("SELECT "+DIMS[dim]+",COALESCE(SUM(r.amount),0),COUNT(*)"
             +base+" GROUP BY 1 ORDER BY 2 DESC LIMIT 200"),params).all()
-        volumes = db.execute(text("SELECT r.unit,SUM(CASE WHEN UPPER(r.origin)='COLETA' THEN r.quantity ELSE 0 END),SUM(r.collected)"+base+" GROUP BY 1"),params).all()
+        volumes = db.execute(text("SELECT r.unit,SUM(CASE WHEN UPPER(r.origin)='COLETA' THEN r.quantity ELSE 0 END),SUM(r.collected)"+base+" AND UPPER(TRIM(r.unit)) IN ('KG','L','M3','M³','T','TON') AND UPPER(COALESCE(r.service,'')) NOT LIKE '%FRANQUIA%' GROUP BY 1"),params).all()
+        maprows=map_data(db,base,params)
         options = {field:[r[0] for r in db.execute(text("SELECT DISTINCT "+field+
                    " FROM revenue WHERE "+field+" IS NOT NULL AND "+field+"<>'' ORDER BY 1 LIMIT 400"))]
                    for field in FILTERS}
@@ -180,7 +188,11 @@ def index():
                                   dims=DIMS,dim=dim,labels=LABELS,months=months,
                                   total=total,count=count,bills=bills,missing=missing,
                                   monthly=monthly,ranking=ranking,volumes=volumes,money=money,
-                                  peak=peak,pct=lambda v,p:100*float(v)/p)
+                                  maprows=maprows,number=number,peak=peak,pct=lambda v,p:100*float(v)/p)
+
+@app.get("/geografia")
+def geografia():
+    return Response((ROOT/"data"/"geografia.json").read_text(encoding="utf-8"),mimetype="application/json")
 
 @app.get("/sisgr/diagnostico")
 def sisgr_diagnostico():
