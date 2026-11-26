@@ -54,6 +54,7 @@ def build(client,bills,fields,progress):
             if str(bm["billing_id"])!=str(b["id"]):raise ValueError("BM fora do faturamento")
             if canceled(bm):continue
             subtotal=Decimal(0)
+            bm_rows=[]
             for i in client.listing("romain-items",{"romanian_id":bm["id"]}):
                 if str(i["romanian_id"])!=str(bm["id"]):raise ValueError("Item fora do BM")
                 if canceled(i):continue
@@ -77,8 +78,20 @@ def build(client,bills,fields,progress):
                 if key and key not in seen_collect and unit and dest.get("measure") is not None:
                     collected=dec(dest["measure"]);seen_collect.add(key)
                 row=dict.fromkeys(fields,"")
-                row.update(item_id=str(i["id"]),billing_id=str(b["id"]),bm_id=str(bm["id"]),billing_date=str(b["registed_at"])[:10],due_date=str(b.get("due_date") or "")[:10],branch=name(b.get("company")),client=name(b.get("client")),generator=name(g),city=name(city),state=str(uf)[:5],origin=name(i.get("origin")),product=name(i.get("type_residue_name") or residue),service=name(i.get("description")),unit=str(unit),collected=collected,quantity=dec(i.get("quantity")),amount=amount,vehicle_id=str(s.get("vehicle_id") or ""),driver=name(driver),transporter=str(s.get("transporter_id") or ""),schedule_id=str(sid or ""),collect_id=str(i.get("collect_id") or ""),scheduled_date=str(s.get("schedule_date") or "")[:10],attendance_start=str(s.get("start_attendance") or s.get("start_at") or ""),attendance_end=end,operation_date=end[:10])
+                row.update(item_id=str(i["id"]),billing_id=str(b["id"]),bm_id=str(bm["id"]),billing_date=str(b["registed_at"])[:10],due_date=str(b.get("due_date") or "")[:10],branch=name(b.get("company")),client=name(b.get("client")),generator=name(g),city=name(city),state=str(uf)[:5],origin=name(i.get("origin")),product=name(residue.get("name") or residue.get("nome") or (str(i.get("description") or "").split(" - ",1)[1] if " - " in str(i.get("description") or "") and "FRANQUIA" not in str(i.get("description") or "").upper() else "")),service=name(i.get("description")),unit=str(unit),collected=collected,quantity=dec(i.get("quantity")),amount=amount,vehicle_id=str(s.get("vehicle_id") or ""),driver=name(driver),transporter=str(s.get("transporter_id") or ""),schedule_id=str(sid or ""),collect_id=str(i.get("collect_id") or ""),scheduled_date=str(s.get("schedule_date") or "")[:10],attendance_start=str(s.get("start_attendance") or s.get("start_at") or ""),attendance_end=end,operation_date=end[:10])
+                bm_rows.append(row)
                 rows.append(row)
+            linked=[r for r in bm_rows if r["schedule_id"] and r["vehicle_id"]]
+            dimensions=("vehicle_id","city","state","driver","transporter","generator","operation_date","schedule_id","scheduled_date","attendance_start","attendance_end")
+            for row in bm_rows:
+                if "FRANQUIA" not in row["service"].upper() or row["vehicle_id"]:continue
+                candidates=[r for r in bm_rows if r is not row and "FRANQUIA" not in r["service"].upper()]
+                if linked and len(candidates)==len(linked) and len({r["vehicle_id"] for r in linked})==1:
+                    for field in dimensions:
+                        vals={r[field] for r in linked}
+                        if len(vals)==1:row[field]=next(iter(vals))
+                    row["product"]="Franquia — múltiplos resíduos"
+                else:issues.append("Franquia sem atribuição segura: "+row["item_id"])
             expected=dec(bm.get("total_value"));bm_total+=expected
             if subtotal!=expected:issues.append("BM "+str(bm["id"])+" diferença "+str(expected-subtotal))
     return rows,{"bills":len(bills),"items":len(rows),"bm_total":str(bm_total),"item_total":str(sum((r["amount"] for r in rows),Decimal(0))),"issues":issues}
