@@ -146,9 +146,9 @@ a{color:#08795e}.upload{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 <section><h2>Faturamento por mês — {{year}}</h2><div class="bars">{% for m,v in monthly %}<div class="barrow"><span>{{m}}</span><b>{{money(v)}}</b></div><div class="barbg"><div class="bar" style="width:{{pct(v,peak)}}%"></div></div>{% endfor %}</div></section>
 <section><h2>Faturamento por {{labels[dim]}}</h2><table><thead><tr><th>Grupo</th><th>Receita</th><th>Itens</th></tr></thead>
 <tbody>{% for name,value,n in ranking %}<tr><td>{{name}}</td><td>{{money(value)}}</td><td>{{n}}</td></tr>{% endfor %}</tbody></table></section>
-<section><h2>Volumes por unidade</h2><table><thead><tr><th>Unidade</th><th>Faturado</th><th>Coletado</th></tr></thead><tbody>
+<section><h2>Volumes por unidade</h2><table><thead><tr><th>Unidade</th><th>Quantidade dos itens de coleta</th><th>Coletado</th></tr></thead><tbody>
 {% for unit,quantity,collected in volumes %}<tr><td>{{unit or 'Não informada'}}</td><td>{{quantity or 0}}</td><td>{{collected or 0}}</td></tr>{% endfor %}</tbody></table></section>
-<section><h2>Auditoria e importação</h2><p><a href="/sisgr/diagnostico">Testar conexão SISGR</a></p><form action="/sisgr/piloto" method="post"><button>Atualizar SISGR — prévia piloto</button></form><p><a href="{{url_for('export_csv',**args.to_dict(flat=True))}}">Exportar CSV detalhado</a> · <a href="/fleet">Consultar frota oficial importada</a></p>
+<section><h2>Auditoria e importação</h2><p><a href="/sisgr/diagnostico">Testar conexão SISGR</a></p><form action="/sisgr/piloto" method="post"><button>Atualizar SISGR — prévia piloto</button></form><form action="/sisgr/piloto" method="post"><input type="hidden" name="save" value="1"><button>Gravar faturamento piloto 105595</button></form><p><a href="{{url_for('export_csv',**args.to_dict(flat=True))}}">Exportar CSV detalhado</a> · <a href="/fleet">Consultar frota oficial importada</a></p>
 <p class="muted">O valor exibido é a soma dos itens importados, não uma confirmação do faturamento fiscal completo no SISGR.</p>
 <form class="upload" action="/import/revenue" method="post" enctype="multipart/form-data"><label>CSV de itens faturados <input type="file" name="file" accept=".csv" required></label><button>Importar ou atualizar</button></form></section></main></body></html>
 """
@@ -170,7 +170,7 @@ def index():
             "SELECT substr(r.billing_date,6,2),COALESCE(SUM(r.amount),0)" + base + " GROUP BY 1"),params)}
         ranking = db.execute(text("SELECT "+DIMS[dim]+",COALESCE(SUM(r.amount),0),COUNT(*)"
             +base+" GROUP BY 1 ORDER BY 2 DESC LIMIT 200"),params).all()
-        volumes = db.execute(text("SELECT r.unit,SUM(r.quantity),SUM(r.collected)"+base+" GROUP BY 1"),params).all()
+        volumes = db.execute(text("SELECT r.unit,SUM(CASE WHEN UPPER(r.origin)='COLETA' THEN r.quantity ELSE 0 END),SUM(r.collected)"+base+" GROUP BY 1"),params).all()
         options = {field:[r[0] for r in db.execute(text("SELECT DISTINCT "+field+
                    " FROM revenue WHERE "+field+" IS NOT NULL AND "+field+"<>'' ORDER BY 1 LIMIT 400"))]
                    for field in FILTERS}
@@ -203,6 +203,14 @@ def sisgr_piloto():
             for row in rows:
                 plate=db.execute(text("SELECT plate FROM fleet WHERE vehicle_id=:id"),{"id":row["vehicle_id"]}).scalar()
                 row["plate"]=plate or ""
+        if request.form.get("save")=="1":
+            if audit["issues"] or not rows or Decimal(audit["bm_total"])!=Decimal(audit["item_total"]):
+                return jsonify(audit=audit,status="Gravação bloqueada pela auditoria"),409
+            statement=text("INSERT INTO revenue ("+",".join(FIELDS)+") VALUES ("+",".join(":"+f for f in FIELDS)+") ON CONFLICT(item_id) DO UPDATE SET "+",".join(f+"=excluded."+f for f in FIELDS[1:]))
+            with engine.begin() as db:
+                db.execute(text("DELETE FROM revenue WHERE billing_id=:id"),{"id":"105595"})
+                db.execute(statement,rows)
+            return redirect("/?year=2026&month=11")
         return jsonify(audit=audit,rows=rows,mode="preview; nenhum dado gravado")
     except Exception as exc:
         return jsonify(status="erro",tipo=type(exc).__name__,http=getattr(exc,"code",None)),502
