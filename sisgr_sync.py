@@ -1,6 +1,8 @@
 """Importação piloto por faturamento, com publicação transacional."""
 import os,json,time,calendar,urllib.request,urllib.parse,urllib.error
 from threading import Lock
+from sqlalchemy import text
+_detail_locks=[Lock() for _ in range(64)]
 _rate_lock=Lock()
 _next_request=0.0
 _cooldown=0.0
@@ -9,10 +11,11 @@ from datetime import date
 from sisgr_probe import BASE,NoRedirect
 
 class Client:
-    def __init__(self):
+    def __init__(self,engine=None):
         self.token=os.environ["SISGR_TOKEN"]
         self.opener=urllib.request.build_opener(NoRedirect)
         self.cache={}
+        self.engine=engine
     def get(self,path,params=None):
         req=urllib.request.Request(BASE+"/"+path+("?"+urllib.parse.urlencode(params) if params else ""),headers={"Authorization":"Bearer "+self.token,"Accept":"application/json"})
         global _next_request,_cooldown
@@ -47,6 +50,19 @@ class Client:
         raise ValueError("Limite de paginação")
     def detail(self,path,id):
         if not id:return {}
+        if self.engine is not None and path in ("generators","professionals","schedules","collects"):
+            key=path+"/"+str(id)
+            with _detail_locks[hash(key)%len(_detail_locks)]:
+                with self.engine.connect() as db:
+                    cached=db.execute(text("SELECT payload FROM sisgr_detail_cache WHERE cache_key=:key AND expires_at>:now"),{"key":key,"now":time.time()}).scalar()
+                if cached is not None:return json.loads(cached)
+                value=self._detail(path,id)
+                ttl=3600 if path in ("generators","professionals") else 300
+                with self.engine.begin() as db:
+                    db.execute(text("INSERT INTO sisgr_detail_cache(cache_key,payload,expires_at) VALUES(:key,:payload,:expiry) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,expires_at=excluded.expires_at"),{"key":key,"payload":json.dumps(value),"expiry":time.time()+ttl})
+                return value
+        return self._detail(path,id)
+    def _detail(self,path,id):
         key=(path,str(id))
         if key not in self.cache:
             p=self.get(path+"/"+str(id))
