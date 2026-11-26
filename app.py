@@ -46,6 +46,7 @@ def norm_plate(value):
 
 def setup_database():
     with engine.begin() as db:
+        db.execute(text("CREATE TABLE IF NOT EXISTS sisgr_detail_cache (cache_key VARCHAR(200) PRIMARY KEY, payload TEXT NOT NULL, expires_at DOUBLE PRECISION NOT NULL)"))
         db.execute(text("CREATE TABLE IF NOT EXISTS fleet (vehicle_id VARCHAR(40) PRIMARY KEY, plate VARCHAR(20) NOT NULL, vehicle_type VARCHAR(100) NOT NULL)"))
         db.execute(text("CREATE TABLE IF NOT EXISTS fleet_plates (plate VARCHAR(20) PRIMARY KEY, vehicle_type VARCHAR(100) NOT NULL)"))
         db.execute(text("CREATE TABLE IF NOT EXISTS regions (city VARCHAR(200) NOT NULL, state VARCHAR(5) NOT NULL, region VARCHAR(150), PRIMARY KEY(city,state))"))
@@ -264,7 +265,7 @@ def sisgr_piloto():
 
 @app.get("/sisgr/mensal")
 def monthly_page():
-    return render_template_string("""<meta charset="utf-8"><h1>Importação mensal SISGR</h1><a href="/">Voltar ao dashboard</a><p>Importação experimental em lotes de 1 faturamento. Pendências não são gravadas.</p><form method="post"><label>Mês <input type="month" name="month" value="2026-11" required></label><label>Posição inicial <input type="number" name="offset" min="0" value="0" required></label><button>Importar lote</button></form><hr><label>Velocidade <select id="workers"><option value="1">Econômico</option><option value="3">Equilibrado</option><option value="5">Rápido</option><option value="10">Turbo — 10</option></select></label> <label>Modo <select id="mode"><option value="missing">Somente ausentes</option><option value="full">Completo — reprocessar</option></select></label> <button id="start">Iniciar importação automática</button> <button id="pause">Pausar</button><p id="progress"></p><progress id="bar" value="0" max="1"></progress><pre id="issues" style="white-space:pre-wrap"></pre><script src="/static/month-sync.js"></script>""")
+    return render_template_string("""<meta charset="utf-8"><h1>Importação mensal SISGR</h1><a href="/">Voltar ao dashboard</a><p>Importação experimental em lotes de 1 faturamento. Pendências não são gravadas.</p><form method="post"><label>Mês <input type="month" name="month" value="2026-11" required></label><label>Posição inicial <input type="number" name="offset" min="0" value="0" required></label><button>Importar lote</button></form><hr><label>Velocidade <select id="workers"><option value="1">Econômico</option><option value="3">Equilibrado</option><option value="5">Rápido</option><option value="10">Turbo — 10</option></select></label> <label>Modo <select id="mode"><option value="missing">Somente ausentes</option><option value="full">Completo — reprocessar</option></select></label> <button id="start">Iniciar importação automática</button> <button id="pause">Pausar</button><p id="progress"></p><progress id="bar" value="0" max="1"></progress><pre id="issues" style="white-space:pre-wrap"></pre><script src="/static/month-sync.js?v=08"></script>""")
 
 @app.post("/sisgr/lote")
 def monthly_batch_api():
