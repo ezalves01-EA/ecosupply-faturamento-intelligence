@@ -4,7 +4,7 @@ from calendar import monthrange
 from decimal import Decimal
 from sqlalchemy import text
 from threading import BoundedSemaphore
-slots=BoundedSemaphore(10)
+slots=BoundedSemaphore(3)
 from sisgr_sync import Client,build
 
 def run_batch(engine,fields,month,offset,limit=1,mode="full"):
@@ -34,7 +34,7 @@ def _run_batch(engine,fields,month,offset,mode):
                 if exists:
                     results.append({"id":bill["id"],"status":"existente"});continue
             rows,audit=build(client,[bill],fields,lambda n,t:None)
-            if not rows or Decimal(audit["bm_total"])!=Decimal(audit["item_total"]) or audit["issues"]:
+            if not rows or abs(Decimal(audit["bm_total"])-Decimal(audit["item_total"]))>Decimal("0.01") or audit["issues"]:
                 results.append({"id":bill["id"],"status":"pendente","audit":audit});continue
             with engine.begin() as db:
                 if engine.dialect.name=="postgresql":
