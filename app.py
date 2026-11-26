@@ -34,7 +34,7 @@ DIMS = {
     "plate": "COALESCE(NULLIF(r.plate,''),'Sem vínculo')",
     "vehicle_type": "COALESCE(NULLIF(f.vehicle_type,''),NULLIF(fp.vehicle_type,''),'Não classificado')",
     "driver": "COALESCE(NULLIF(r.driver,''),'Sem vínculo')",
-    "transporter": "COALESCE(NULLIF(r.transporter,''),'Sem vínculo')",
+    "transporter": "CASE r.transporter WHEN '5' THEN '5 · ECOSUPPLY RECICLADORA LTDA.' WHEN '6' THEN '6 · ECOSUPPLY RECICLADORA DO NORTE LTDA.' ELSE COALESCE(NULLIF(r.transporter,''),'Sem vínculo') END",
 }
 LABELS = {"city":"Cidade", "state":"UF", "region":"Região", "branch":"Filial",
           "client":"Cliente", "generator":"Geradora", "origin":"Origem",
@@ -137,9 +137,10 @@ button{background:#08795e;color:#fff;cursor:pointer}.metrics{display:flex;flex-w
 .bar{height:100%;background:#108b6e}.barrow{display:flex;justify-content:space-between;gap:12px;font-size:13px}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;border-bottom:1px solid #e1e8e5;font-size:14px}
 a{color:#08795e}.upload{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
-</style></head><body>
+aside{position:fixed;inset:0 auto 0 0;width:245px;background:#103d35;color:white;padding:24px 18px}aside a{display:block;color:white;text-decoration:none;padding:12px;border-radius:8px}aside a:hover{background:#286052}.brandmark{display:inline-block;background:#fff;color:#08795e;border-radius:12px;padding:5px 12px;font-size:32px;font-weight:800}.brand{font-size:23px;font-weight:700}body>header,main{margin-left:245px}main{max-width:none}section{scroll-margin-top:15px}@media(max-width:800px){aside{position:static;width:auto}body>header,main{margin-left:0}}
+</style></head><body><aside><div class="brand"><span class="brandmark">e↗</span> ecosupply</div><p>INTELIGÊNCIA FINANCEIRA</p><nav><a href="#overview">▦ Visão geral</a><a href="#conciliation">⇄ Conciliação</a><a href="#ranking">▥ Faturamento</a><a href="#map">◈ Mapas e regiões</a><a href="#audit">✓ Auditoria</a><a href="/sisgr/mensal">↻ Importar SISGR</a></nav></aside>
 <header><h1>ECOSUPPLY | EFI</h1><div>Inteligência de Faturamento • Dados efetivamente importados</div></header>
-<main><section><form class="filters" method="get">
+<main><section id="overview"><form class="filters" method="get">
 <input name="year" value="{{year}}" size="5" aria-label="Ano">
 <select name="month"><option value="">Todos os meses</option>{% for m in months %}<option value="{{m}}" {% if args.get('month')==m %}selected{% endif %}>{{m}}</option>{% endfor %}</select>
 {% for k, values in options.items() %}<select name="{{k}}"><option value="">{{labels[k]}}: todos</option>{% for value in values %}<option value="{{value}}" {% if args.get(k)==value %}selected{% endif %}>{{value}}</option>{% endfor %}</select>{% endfor %}
@@ -151,11 +152,11 @@ a{color:#08795e}.upload{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 <article><div class="muted">Itens sem placa</div><div class="big">{{missing}}</div></article></div>
 {% if count == 0 %}<p class="muted">Nenhum faturamento importado. A base financeira está vazia; não são exibidos valores fictícios.</p>{% endif %}</section>
 <section><h2>Faturamento por mês — {{year}}</h2><div class="bars">{% for m,v in monthly %}<div class="barrow"><span>{{m}}</span><b>{{money(v)}}</b></div><div class="barbg"><div class="bar" style="width:{{pct(v,peak)}}%"></div></div>{% endfor %}</div></section>
-<section><h2>Faturamento por {{labels[dim]}}</h2><table><thead><tr><th>Grupo</th><th>Receita</th><th>Itens</th></tr></thead>
-<tbody>{% for name,value,n in ranking %}<tr><td>{{name}}</td><td>{{money(value)}}</td><td>{{n}}</td></tr>{% endfor %}</tbody></table></section>
-<section><h2>Mapa de faturamento — Mato Grosso</h2><select id="mapmode"><option value="city">Por cidade</option><option value="region">Por região</option></select><p id="mapinfo" class="muted">Selecione uma cidade no mapa.</p><svg id="revenue-map" viewBox="0 0 800 650" style="width:100%;max-height:650px"></svg><p class="muted">Malha da logística: MT. Demais estados permanecem nas tabelas.</p></section><script>const mapRows={{maprows|tojson}};</script><script src="/static/revenue-map.js"></script><section><h2>Volumes por unidade</h2><table><thead><tr><th>Unidade</th><th>Quantidade dos itens de coleta</th><th>Coletado</th></tr></thead><tbody>
+<section id="conciliation"><h2>Filial faturadora × transportadora</h2><p class="muted">Receita dos mesmos itens em duas perspectivas; não somar os totais entre si. Empresa faturadora conforme cadastro SISGR.</p><div class="metrics">{% for title,groups in [('Faturamento por filial',branches),('Receita por transportadora',transporters)] %}<article><h2>{{title}}</h2><table>{% for name,value in groups %}<tr><td>{{name}}</td><td>{{money(value)}}</td></tr>{% endfor %}</table></article>{% endfor %}</div><h2>Matriz de conciliação</h2><div style="overflow:auto"><table><tr><th>Faturadora</th>{% for t,v in transporters %}<th>{{t}}</th>{% endfor %}<th>Total</th></tr>{% for b,v in branches %}<tr><th>{{b}}</th>{% for t,tv in transporters %}<td>{{money(matrix.get((b,t),0))}}</td>{% endfor %}<th>{{money(v)}}</th></tr>{% endfor %}<tr><th>Total</th>{% for t,v in transporters %}<th>{{money(v)}}</th>{% endfor %}<th>{{money(total)}}</th></tr></table></div></section><section id="ranking"><h2>Faturamento por {{labels[dim]}}</h2><table><thead><tr><th>Grupo</th><th>Receita</th><th>Itens</th></tr></thead>
+<tbody>{% for name,value,n in ranking %}<tr><td>{% if dim=="city" and name=="Não identificada" %}<a href="{{url_for('unknown_city',**args.to_dict(flat=True))}}">{{name}}</a>{% else %}{{name}}{% endif %}</td><td>{{money(value)}}</td><td>{{n}}</td></tr>{% endfor %}</tbody></table></section>
+<section id="map"><h2>Mapa de faturamento — Mato Grosso</h2><select id="mapmode"><option value="city">Por cidade</option><option value="region">Por região</option></select><p id="mapinfo" class="muted">Selecione uma cidade no mapa.</p><svg id="revenue-map" viewBox="0 0 800 650" style="width:100%;max-height:650px"></svg><p class="muted">Malha da logística: MT. Demais estados permanecem nas tabelas.</p></section><script>const mapRows={{maprows|tojson}};</script><script src="/static/revenue-map.js"></script><section><h2>Volumes por unidade</h2><table><thead><tr><th>Unidade</th><th>Quantidade dos itens de coleta</th><th>Coletado</th></tr></thead><tbody>
 {% for unit,quantity,collected in volumes %}<tr><td>{{unit or 'Não informada'}}</td><td>{{number(quantity)}}</td><td>{{number(collected)}}</td></tr>{% endfor %}</tbody></table></section>
-<section><h2>Auditoria e importação</h2><p><a href="/sisgr/mensal">Importação mensal — lotes de teste</a></p><p><a href="/sisgr/diagnostico">Testar conexão SISGR</a></p><form action="/sisgr/piloto" method="post"><button>Atualizar SISGR — prévia piloto</button></form><form action="/sisgr/piloto" method="post"><input type="hidden" name="save" value="1"><button>Gravar faturamento piloto 105595</button></form><p><a href="{{url_for('export_csv',**args.to_dict(flat=True))}}">Exportar CSV detalhado</a> · <a href="/fleet">Consultar frota oficial importada</a></p>
+<section id="audit"><h2>Auditoria e importação</h2><p><a href="/sisgr/mensal">Importação mensal — lotes de teste</a></p><p><a href="/sisgr/diagnostico">Testar conexão SISGR</a></p><form action="/sisgr/piloto" method="post"><button>Atualizar SISGR — prévia piloto</button></form><form action="/sisgr/piloto" method="post"><input type="hidden" name="save" value="1"><button>Gravar faturamento piloto 105595</button></form><p><a href="{{url_for('export_csv',**args.to_dict(flat=True))}}">Exportar CSV detalhado</a> · <a href="/fleet">Consultar frota oficial importada</a></p>
 <p class="muted">O valor exibido é a soma dos itens importados, não uma confirmação do faturamento fiscal completo no SISGR.</p>
 <form class="upload" action="/import/revenue" method="post" enctype="multipart/form-data"><label>CSV de itens faturados <input type="file" name="file" accept=".csv" required></label><button>Importar ou atualizar</button></form></section></main></body></html>
 """
@@ -179,6 +180,10 @@ def index():
             +base+" GROUP BY 1 ORDER BY 2 DESC LIMIT 200"),params).all()
         volumes = db.execute(text("SELECT r.unit,SUM(CASE WHEN UPPER(r.origin)='COLETA' THEN r.quantity ELSE 0 END),SUM(r.collected)"+base+" AND UPPER(TRIM(r.unit)) IN ('KG','L','M3','M³','T','TON') AND UPPER(COALESCE(r.service,'')) NOT LIKE '%FRANQUIA%' GROUP BY 1"),params).all()
         maprows=map_data(db,base,params)
+        pairs=db.execute(text("SELECT "+DIMS["branch"]+","+DIMS["transporter"]+",SUM(r.amount)"+base+" GROUP BY 1,2"),params).all()
+        matrix={(b,t):v for b,t,v in pairs}
+        branches=sorted([(b,sum(v for x,t,v in pairs if x==b)) for b in {x for x,t,v in pairs}])
+        transporters=sorted([(t,sum(v for b,x,v in pairs if x==t)) for t in {x for b,x,v in pairs}])
         options = {field:[r[0] for r in db.execute(text("SELECT DISTINCT "+field+
                    " FROM revenue WHERE "+field+" IS NOT NULL AND "+field+"<>'' ORDER BY 1 LIMIT 400"))]
                    for field in FILTERS}
@@ -188,7 +193,14 @@ def index():
                                   dims=DIMS,dim=dim,labels=LABELS,months=months,
                                   total=total,count=count,bills=bills,missing=missing,
                                   monthly=monthly,ranking=ranking,volumes=volumes,money=money,
-                                  maprows=maprows,number=number,peak=peak,pct=lambda v,p:100*float(v)/p)
+                                  branches=branches,transporters=transporters,matrix=matrix,maprows=maprows,number=number,peak=peak,pct=lambda v,p:100*float(v)/p)
+
+@app.get("/auditoria/cidades")
+def unknown_city():
+    where,params,year=conditions()
+    with engine.connect() as db:
+        rows=db.execute(text("SELECT r.billing_id,r.bm_id,r.item_id,r.client,r.service,r.transporter,r.schedule_id,r.collect_id,r.amount"+base_query(where)+" AND COALESCE(TRIM(r.city),'')='' ORDER BY r.amount DESC"),params).all()
+    return render_template_string("""<meta charset="utf-8"><h1>Cidades não identificadas</h1><a href="/">Voltar</a><p>{{rows|length}} itens — {{money(total)}}</p><table border="1" cellpadding="7"><tr>{% for h in ['Faturamento','BM','Item','Cliente','Serviço','Transportador','Agendamento','Coleta','Valor'] %}<th>{{h}}</th>{% endfor %}</tr>{% for r in rows %}<tr>{% for v in r %}<td>{{money(v) if loop.last else v}}</td>{% endfor %}</tr>{% endfor %}</table>""",rows=rows,money=money,total=sum(r[-1] or 0 for r in rows))
 
 @app.get("/geografia")
 def geografia():
