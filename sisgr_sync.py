@@ -1,5 +1,9 @@
 """Importação piloto por faturamento, com publicação transacional."""
 import os,json,time,calendar,urllib.request,urllib.parse,urllib.error
+from threading import Lock
+_rate_lock=Lock()
+_next_request=0.0
+_cooldown=0.0
 from decimal import Decimal
 from datetime import date
 from sisgr_probe import BASE,NoRedirect
@@ -11,12 +15,24 @@ class Client:
         self.cache={}
     def get(self,path,params=None):
         req=urllib.request.Request(BASE+"/"+path+("?"+urllib.parse.urlencode(params) if params else ""),headers={"Authorization":"Bearer "+self.token,"Accept":"application/json"})
+        global _next_request,_cooldown
         for attempt in range(5):
+            while True:
+                with _rate_lock:
+                    delay=max(_next_request,_cooldown)-time.monotonic()
+                    if delay<=0:
+                        _next_request=time.monotonic()+0.35
+                        break
+                time.sleep(delay)
             try:
                 with self.opener.open(req,timeout=30) as r:return json.loads(r.read())
             except urllib.error.HTTPError as e:
-                if e.code!=429 or attempt==4:raise
-                time.sleep(min(60,2**(attempt+1)))
+                if e.code not in (429,502,503,504) or attempt==4:raise
+                delay=min(60,2**(attempt+2))
+                if e.code==429:
+                    with _rate_lock:
+                        _cooldown=max(_cooldown,time.monotonic()+delay)
+                time.sleep(delay)
     def listing(self,path,params):
         seen=set()
         for page in range(1,501):
@@ -47,7 +63,7 @@ def canceled(r):
     return bool(r.get("canceled_at")) or str(r.get("canceled","")).lower() in ("1","true","sim")
 def dec(v):return Decimal(str(v if v is not None and v!="" else 0))
 def build(client,bills,fields,progress):
-    rows=[];issues=[];seen_collect=set();bm_total=Decimal(0)
+    rows=[];issues=[];warnings=[];seen_collect=set();bm_total=Decimal(0)
     for n,b in enumerate(bills,1):
         progress(n,len(bills))
         for bm in client.listing("romain",{"billing_id":b["id"]}):
@@ -91,7 +107,10 @@ def build(client,bills,fields,progress):
                         vals={r[field] for r in linked}
                         if len(vals)==1:row[field]=next(iter(vals))
                     row["product"]="Franquia — múltiplos resíduos"
-                else:issues.append("Franquia sem atribuição segura: "+row["item_id"])
+                else:
+                    warnings.append("Franquia sem atribuição segura: "+row["item_id"])
+                    row["product"]="Franquia — sem atribuição operacional"
             expected=dec(bm.get("total_value"));bm_total+=expected
-            if subtotal!=expected:issues.append("BM "+str(bm["id"])+" diferença "+str(expected-subtotal))
-    return rows,{"bills":len(bills),"items":len(rows),"bm_total":str(bm_total),"item_total":str(sum((r["amount"] for r in rows),Decimal(0))),"issues":issues}
+            if subtotal!=expected:
+                (warnings if abs(subtotal-expected)<=Decimal("0.01") else issues).append("BM "+str(bm["id"])+" diferença "+str(expected-subtotal))
+    return rows,{"bills":len(bills),"items":len(rows),"bm_total":str(bm_total),"item_total":str(sum((r["amount"] for r in rows),Decimal(0))),"issues":issues,"warnings":warnings}
