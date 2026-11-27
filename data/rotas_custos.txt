@@ -1,0 +1,28 @@
+BAC-4J44|ROLLON COM JULIETA|10.86|1:ESPORÁDICO;2:ESPORÁDICO;3:ESPORÁDICO;4:ESPORÁDICO
+BWI-2594|ROLLON COM JULIETA|10.86|ESPORÁDICO:ESPORÁDICO
+DAH-7H63|BAÚ GRANDE COM JULIETA|11.99|1:Araputanga,Cáceres,Figueirópolis d’Oeste,Glória d’Oeste,Indiavaí,Jauru,Mirassol d’Oeste,Nova Lacerda,Poconé,Pontes e Lacerda,Porto Esperidião,São José dos Quatro Marcos,Vila Bela da Santíssima Trindade;2:Itiquira,Jaciara,Juscimeira,Rondonópolis;3:Água Boa,Alto Boa Vista,Barra do Garças,Bom Jesus do Araguaia,Campinápolis,Canarana,Confresa,Espigão do Leste,Gaúcha do Norte,General Carneiro,Nova Xavantina,Paranatinga,Porto Alegre do Norte,Primavera do Leste,Querência,Ribeirão Cascalheira,São Félix do Araguaia,São José do Xingu,Vila Rica;4:Alto Araguaia,Alto Garças,Alto Taquari,Rondonópolis
+FDC-0G04|HIDRO|14.17|1:ESPORÁDICO;2:ESPORÁDICO;3:ESPORÁDICO;4:ESPORÁDICO
+FXF-7536|BAÚ|9.17|1:Sorriso;2:;3:;4:
+GEX-1B55|GRANELEIRO COM JULIETA|10.23|1:Ipiranga do Norte,Lucas do Rio Verde,Tabaporã,Tapurah;2:Itanhangá,Lucas do Rio Verde,Sorriso,Tapurah;3:Ipiranga Do Norte,Tapurah;4:ESPORÁDICO
+HTP-0171|BAÚ PEQUENO|9.05|1:Cuiabá
+HTP-0178|HIDRO|9.17|ESPORÁDICO:ESPORÁDICO
+HTP-0B45|BAÚ PEQUENO|9.05|1:Várzea Grande
+HTP-5239|BAÚ COM JULIETA|11.99|1:Lucas do Rio Verde,Sorriso;2:Lucas do Rio Verde;3:Sorriso;4:Lucas do Rio Verde
+KNJ-6A65|HIDRO|14.17|1:ESPORÁDICO;2:ESPORÁDICO;3:ESPORÁDICO;4:ESPORÁDICO
+OOM-9D66|BAÚ GRANDE COM JULIETA|11.99|1:Alto Paraguai,Campo Novo do Parecis,Diamantino,Nobres,Nova Maringá,Rosário Oeste,São José do Rio Claro;2:Acorizal,Arenápolis,Barra do Bugres,Denise,Jangada,Nortelândia,Nova Marilândia,Nova Olímpia,Santo Afonso,Tangará da Serra
+QCE-4F84|BAÚ|9.17|1:Sinop;2:Sinop;3:Sinop;4:Sinop
+QCT-1B55|BAÚ|9.17|1:Sinop;2:Sinop;3:Sinop;4:Sinop
+RAV-9G17|BAÚ|9.17|1:ESPORÁDICO;2:ESPORÁDICO;3:ESPORÁDICO;4:ESPORÁDICO
+ROG-3E33|HIDRO|14.17|1:ESPORÁDICO;2:ESPORÁDICO;3:ESPORÁDICO;4:ESPORÁDICO
+ROH-1D92|ROLLON COM JULIETA|10.86|1:ESPORÁDICO;2:ESPORÁDICO;3:ESPORÁDICO;4:ESPORÁDICO
+RWE-2C57|ROLLON COM JULIETA|10.86|ESPORÁDICO:ESPORÁDICO
+SFD-9E95|GRANELEIRO|9.17|1:Diamantino;2:Campo Verde;3:Bom Jesus do Araguaia,Canarana
+SFD-9E97|GRANELEIRO COM JULIETA|10.23|1:Colíder,Nova Guarita;2:Alta Floresta,Itaúba,Nova Canaã Do Norte,Novo Mundo,Terra Nova Do Norte;3:;4:Carlinda,Cláudia,Guarantã Do Norte,Marcelândia,Matupá,Nova Canaã Do Norte,Nova Santa Helena,Peixoto de Azevedo,União Do Sul
+SJR-6F37|GRANELEIRO COM JULIETA|10.23|1:Sapezal;2:Campos de Júlio,Cerejeiras,Comodoro,Vilhena
+SJX-1I03|ROLLON COM JULIETA|10.86|1:ESPORÁDICO;2:ESPORÁDICO;3:ESPORÁDICO;4:ESPORÁDICO
+SMF-3E08|HIDRO COM JULIETA|15.14|ESPORÁDICO:ESPORÁDICO
+THD-5I05|BAÚ|9.17|1:Boa Esperança Do Norte,Nova Ubiratã,Sorriso,Vera;2:Boa Esperança Do Norte,Paranatinga;3:Nova Mutum;4:
+TMC-5A34|BAÚ|9.17|1:Sinop;2:Sinop;3:Sinop;4:Sinop
+TMD-1I32|GRANELEIRO|10.23|1:ESPORÁDICO;2:ESPORÁDICO;3:ESPORÁDICO;4:ESPORÁDICO
+UOO-8I31|ROLLON COM JULIETA|10.86|1:ESPORÁDICO;2:ESPORÁDICO;3:ESPORÁDICO;4:ESPORÁDICO
+UOT-4D65|ROLLON COM JULIETA|10.86|1:ESPORÁDICO;2:ESPORÁDICO;3:ESPORÁDICO;4:ESPORÁDICO
