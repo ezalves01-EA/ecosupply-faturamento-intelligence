@@ -111,7 +111,7 @@ def register(app, engine, root, html, money):
         try:return jsonify(km=float(distance(base,city)))
         except Exception as exc:return jsonify(message=str(exc)),502
 
-    @app.get('/simulador-custos')
+    @app.route('/simulador-custos',methods=['GET','POST'])
     def cost_simulator():
         configs,trips=load()
         year=request.args.get('year','2026')
@@ -149,6 +149,48 @@ def register(app, engine, root, html, money):
                 configs[rid]={'plate':configs[known[0]]['plate'] if known else p,'type':next(iter(types)) if len(types)==1 else vehicle_type,'rate':next(iter(rates)) if len(rates)==1 else source_rates.get(norm(p),''), 'destination':city,'Sinop':'','Cuiabá':''}
             c=configs[rid]
             data.append(dict(route=rid,plate=c['plate'],city=city,state=uf,base=base,period=period or 'Sem data operacional',origin=origin,region=region,type=c['type'],amount=float(amount or 0)))
+        if request.method=='POST':
+            from flask import Response
+            from simulator_pdf import generate
+            payload=request.get_json(silent=True) or {}
+            selected=payload.get('rows',[])
+            try:
+                trips_count=int(payload['trips'])
+                if trips_count<1 or trips_count>10000 or not selected:raise ValueError()
+                chosen={}
+                for x in selected:
+                    key=tuple(x['key'])
+                    if len(key)!=6 or key in chosen:raise ValueError()
+                    km,rate=Decimal(str(x['km'])),Decimal(str(x['rate']))
+                    if not km.is_finite() or not rate.is_finite() or km<=0 or rate<=0:raise ValueError()
+                    chosen[key]=(km,rate)
+            except (ValueError,KeyError,TypeError,InvalidOperation):abort(400)
+            valid={(r['route'],r['plate'],r['base'],r['period'],r['state'],r['city']):r for r in data}
+            if not chosen.keys()<=valid.keys():abort(409)
+            lookup={}
+            for key in chosen:
+                r=valid[key]
+                lookup[(norm(r['plate']),r['base'],r['period'],r['state'],r['city'])]=key
+            detail=[]
+            totals=defaultdict(Decimal)
+            with engine.connect() as db:
+                records=db.execute(text("""SELECT r.*,COALESCE(rg.region,'Não classificada') AS region FROM revenue r LEFT JOIN regions rg ON UPPER(TRIM(r.city))=rg.city AND UPPER(TRIM(r.state))=rg.state WHERE r."""+column+""" LIKE :period ORDER BY r.operation_date,r.client,r.item_id"""),{'period':year+('-'+month if month else '')+'%'}).mappings()
+                for row in records:
+                    base='Sinop' if str(row['transporter']) in ('1','2','3','6') else 'Cuiabá' if str(row['transporter'])=='5' else ''
+                    key=lookup.get((norm(row['plate']),base,(row['operation_date'] or '')[:7] or 'Sem data operacional',row['state'],row['city']))
+                    if key is None or norm(row['origin']) not in ('COLETA','SERVICO'):continue
+                    detail.append(dict(row));totals[key]+=Decimal(str(row['amount'] or 0))
+            summaries={}
+            for key,(km,rate) in chosen.items():
+                r=valid[key];group=(norm(r['plate']),r['base'])
+                if group not in summaries:summaries[group]=dict(plate=r['plate'],type=r['type'],base=r['base'],city=r['city'],km=km,rate=rate,revenue=Decimal(0))
+                g=summaries[group]
+                if g['rate']!=rate:abort(400)
+                if km>g['km']:g.update(km=km,city=r['city'])
+                g['revenue']+=totals[key]
+            for g in summaries.values():g['cost']=(g['km']*g['rate']*trips_count).quantize(Decimal('.01'))
+            pdf=generate(detail,list(summaries.values()),trips_count,year+'/'+(month or 'Todos')+' | Data de '+('operação' if basis=='operation' else 'faturamento'),html,money)
+            return Response(pdf,mimetype='application/pdf',headers={'Content-Disposition':'attachment; filename="EFI-relatorio-logistico.pdf"'})
         show_zero=request.args.get('show_zero')=='1'
         if not show_zero:
             net=defaultdict(Decimal)
@@ -161,8 +203,8 @@ def register(app, engine, root, html, money):
         <style>.sim-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}.sim-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.sim-filters label{display:grid;gap:4px}.sim-filters select{width:100%;padding:8px;border:1px solid #dce5ed;border-radius:5px}#sim-map{width:100%;height:430px;background:#f3f6f8}#sim-map path{cursor:pointer}#sim-map path:hover{stroke:#2466ad;stroke-width:2}.sim-row input{width:90px;padding:6px;border:1px solid #dce5ed}.sim-grid>div{min-width:0}.sim-list{height:430px;overflow:auto;padding-right:5px;scrollbar-width:thin}.sim-list label{overflow-wrap:anywhere}@media(max-width:1100px){.sim-grid{grid-template-columns:1fr 1fr}.sim-grid>div:first-child{grid-column:1/-1}}@media(max-width:650px){.sim-grid{grid-template-columns:1fr}}</style>
         <section><div class="sim-grid"><div><h2>Mapa de faturamento</h2><label>Selecionar por <select id="sim-mode"><option value="region">Região</option><option value="route">Rota</option><option value="city">Cidade</option></select></label><svg id="sim-map" viewBox="0 0 800 650"></svg><small id="sim-mapinfo">Clique no mapa para filtrar. Municípios fora de MT disponíveis nos filtros.</small></div><div><h2>Regiões</h2><div id="sim-ranking" class="sim-list"></div></div><div><h2>Cidades da seleção</h2><div id="sim-cities" class="sim-list"></div></div></div></section>
         <section><h2>Seleção operacional</h2><p>Faturamento geral do período: <b>{{money(general)}}</b> · Receita operacional elegível: <b>{{money(operational)}}</b> · Diferença de escopo: <b>{{money(general-operational)}}</b>. Vendas e itens sem placa, cidade ou base não integram a simulação.</p><div id="sim-filters" class="sim-filters"></div><p><button id="sim-clear">Limpar filtros</button></p><div class="metrics"><article>Faturamento<div class="big" id="sim-revenue"></div></article><article>Coleta<div class="big" id="sim-collect"></div></article><article>Serviços<div class="big" id="sim-service"></div></article></div></section>
-        <section><h2>Simular custo da seleção</h2><p>Marque as cidades/rotas da viagem. O custo será consolidado por placa e base, usando apenas a maior distância de ida e volta.</p><div style="overflow:auto"><table><thead><tr><th><input type="checkbox" id="sim-all" aria-label="Selecionar todas"></th><th>Rota / mês</th><th>Base</th><th>Cidade / UF</th><th>Receita selecionada</th><th>KM ida + volta</th><th>R$/KM</th></tr></thead><tbody id="sim-trips"></tbody></table></div><p><label>Viagens <input id="sim-count" type="number" min="1" step="1" value="1" style="width:65px"></label> <button id="sim-auto">Calcular KM das linhas marcadas</button> <span id="sim-progress"></span> <button id="sim-calculate">Calcular custo da seleção</button></p><div id="sim-result"></div></section>
-        <script>const simData={{data|tojson}},simConfigs={{configs|tojson}},simTrips={{trips|tojson}};</script><script src="/static/cost-simulator.js?v=6"></script>""",data=data,configs=configs,trips=trips,general=general,operational=operational,basis=basis,show_zero=show_zero,year=year,month=month,months=[f'{i:02d}' for i in range(1,13)])
+        <section><h2>Simular custo da seleção</h2><p>Marque as cidades/rotas da viagem. O custo será consolidado por placa e base, usando apenas a maior distância de ida e volta.</p><div style="overflow:auto"><table><thead><tr><th><input type="checkbox" id="sim-all" aria-label="Selecionar todas"></th><th>Rota / mês</th><th>Base</th><th>Cidade / UF</th><th>Receita selecionada</th><th>KM ida + volta</th><th>R$/KM</th></tr></thead><tbody id="sim-trips"></tbody></table></div><p><label>Viagens <input id="sim-count" type="number" min="1" step="1" value="1" style="width:65px"></label> <button id="sim-auto">Calcular KM das linhas marcadas</button> <span id="sim-progress"></span> <button id="sim-calculate">Calcular custo da seleção</button> <button id="sim-pdf" style="background:#169875">Gerar relatório PDF</button></p><div id="sim-result"></div></section>
+        <script>const simData={{data|tojson}},simConfigs={{configs|tojson}},simTrips={{trips|tojson}};</script><script src="/static/cost-simulator.js?v=7"></script>""",data=data,configs=configs,trips=trips,general=general,operational=operational,basis=basis,show_zero=show_zero,year=year,month=month,months=[f'{i:02d}' for i in range(1,13)])
 
     @app.route('/cadastro-rotas',methods=['GET','POST'])
     def route_config():
