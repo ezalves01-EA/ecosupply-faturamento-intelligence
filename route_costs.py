@@ -12,7 +12,8 @@ from sqlalchemy import text
 
 def register(app, engine, root, html, money):
     def norm(v):
-        return ''.join(c for c in unicodedata.normalize('NFKD',str(v or '').upper()) if c.isalnum())
+        key=''.join(c for c in unicodedata.normalize('NFKD',str(v or '').upper()) if c.isalnum())
+        return 'DAH7H63' if key=='DAH7763' else key
     def seed():
         result={}
         for line in (root/'data'/'rotas_custos.txt').read_text(encoding='utf-8').splitlines():
@@ -145,7 +146,7 @@ def register(app, engine, root, html, money):
                 rid='operacional:'+norm(p)+':'+norm(uf)+':'+norm(city)
                 rates={configs[k]['rate'] for k in known}
                 types={configs[k]['type'] for k in known}
-                configs[rid]={'plate':p,'type':next(iter(types)) if len(types)==1 else vehicle_type,'rate':next(iter(rates)) if len(rates)==1 else source_rates.get(norm(p),''), 'destination':city,'Sinop':'','Cuiabá':''}
+                configs[rid]={'plate':configs[known[0]]['plate'] if known else p,'type':next(iter(types)) if len(types)==1 else vehicle_type,'rate':next(iter(rates)) if len(rates)==1 else source_rates.get(norm(p),''), 'destination':city,'Sinop':'','Cuiabá':''}
             c=configs[rid]
             data.append(dict(route=rid,plate=c['plate'],city=city,state=uf,base=base,period=period or 'Sem data operacional',origin=origin,region=region,type=c['type'],amount=float(amount or 0)))
         operational=sum((Decimal(str(r['amount'])) for r in data),Decimal(0))
