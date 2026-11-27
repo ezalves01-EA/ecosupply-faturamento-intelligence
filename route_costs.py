@@ -100,6 +100,35 @@ def register(app, engine, root, html, money):
             c['destination']=city
             db.execute(text("INSERT INTO efi_route_config(id,payload) VALUES(:id,:p) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload"),{'id':rid,'p':json.dumps(c,ensure_ascii=False)})
         return jsonify(status='ok',destination=city,km=float(km))
+    @app.get('/simulador-custos')
+    def cost_simulator():
+        configs,trips=load()
+        year=request.args.get('year','2026')
+        month=request.args.get('month','')
+        if len(year)!=4 or not year.isdigit():abort(400)
+        if month and month not in [f'{i:02d}' for i in range(1,13)]:abort(400)
+        idx=defaultdict(set)
+        for rid,c in configs.items():
+            for city in c['cities'].split(','):
+                if norm(city) not in ('','ESPORADICO'):idx[(norm(c['plate']),norm(city))].add(rid)
+        data=[]
+        with engine.connect() as db:
+            rows=db.execute(text("""SELECT r.plate,r.city,r.state,r.transporter,substr(r.operation_date,1,7),r.origin,COALESCE(rg.region,'Não classificada'),SUM(r.amount)
+            FROM revenue r LEFT JOIN regions rg ON UPPER(TRIM(r.city))=rg.city AND UPPER(TRIM(r.state))=rg.state
+            WHERE r.operation_date LIKE :period AND UPPER(TRIM(r.origin)) IN ('COLETA','SERVIÇO','SERVICO') AND COALESCE(r.schedule_id,'')<>'' GROUP BY 1,2,3,4,5,6,7"""),{'period':year+('-'+month if month else '')+'%'}).all()
+        for p,city,uf,t,period,origin,region,amount in rows:
+            base='Sinop' if str(t) in ('1','2','3','6') else 'Cuiabá' if str(t)=='5' else ''
+            matches=idx[(norm(p),norm(city))]
+            if not base or len(matches)!=1:continue
+            rid=next(iter(matches));c=configs[rid]
+            data.append(dict(route=rid,plate=c['plate'],city=city,state=uf,base=base,period=period,origin=origin,region=region,type=c['type'],amount=float(amount or 0)))
+        return page("""<header><h1>Simulador de Custo Logístico</h1><div>Seleção geográfica e análise de receita operacional</div></header><main><section><form class="filters"><label>Ano <input name="year" value="{{year}}" size="5"></label><label>Mês <select name="month"><option value="">Todos</option>{% for m in months %}<option {{'selected' if m==month else ''}}>{{m}}</option>{% endfor %}</select></label><button>Atualizar período</button><a href="/cadastro-rotas">Cadastro de custos</a></form></section>
+        <style>.sim-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(240px,1fr);gap:16px}.sim-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.sim-filters label{display:grid;gap:4px}.sim-filters select{width:100%;padding:8px;border:1px solid #dce5ed;border-radius:5px}#sim-map{width:100%;height:430px;background:#f3f6f8}#sim-map path{cursor:pointer}#sim-map path:hover{stroke:#2466ad;stroke-width:2}.sim-row input{width:90px;padding:6px;border:1px solid #dce5ed}@media(max-width:950px){.sim-grid{grid-template-columns:1fr}}</style>
+        <section><div class="sim-grid"><div><h2>Mapa de faturamento</h2><label>Selecionar por <select id="sim-mode"><option value="region">Região</option><option value="route">Rota</option><option value="city">Cidade</option></select></label><svg id="sim-map" viewBox="0 0 800 650"></svg><small id="sim-mapinfo">Clique no mapa para filtrar. Municípios fora de MT disponíveis nos filtros.</small></div><div><h2>Distribuição da receita</h2><div id="sim-ranking"></div></div></div></section>
+        <section><h2>Seleção operacional</h2><div id="sim-filters" class="sim-filters"></div><p><button id="sim-clear">Limpar filtros</button></p><div class="metrics"><article>Faturamento<div class="big" id="sim-revenue"></div></article><article>Coleta<div class="big" id="sim-collect"></div></article><article>Serviços<div class="big" id="sim-service"></div></article></div></section>
+        <section><h2>Simular custo da seleção</h2><p>Uma linha por rota, base e mês. Confirme viagens e KM de ida; a distância cadastrada é uma estimativa rodoviária. Para seleção parcial, o custo representa a rota inteira.</p><div style="overflow:auto"><table><thead><tr><th>Rota / mês</th><th>Base</th><th>Destino</th><th>Receita selecionada</th><th>KM ida</th><th>R$/KM</th><th>Viagens</th></tr></thead><tbody id="sim-trips"></tbody></table></div><p><button id="sim-calculate">Calcular custo da seleção</button></p><div id="sim-result"></div></section>
+        <script>const simData={{data|tojson}},simConfigs={{configs|tojson}},simTrips={{trips|tojson}};</script><script src="/static/cost-simulator.js?v=1"></script>""",data=data,configs=configs,trips=trips,year=year,month=month,months=[f'{i:02d}' for i in range(1,13)])
+
     @app.route('/cadastro-rotas',methods=['GET','POST'])
     def route_config():
         configs,_=load()
