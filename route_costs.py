@@ -166,7 +166,7 @@ def register(app, engine, root, html, money):
                     chosen[key]=(km,rate)
             except (ValueError,KeyError,TypeError,InvalidOperation):abort(400)
             valid={(r['route'],r['plate'],r['base'],r['period'],r['state'],r['city']):r for r in data}
-            if not chosen.keys()<=valid.keys():abort(409)
+            if not chosen.keys()<=valid.keys():return jsonify(message='Seleção mudou no banco. Atualize o período e marque novamente.'),409
             lookup={}
             for key in chosen:
                 r=valid[key]
@@ -185,7 +185,7 @@ def register(app, engine, root, html, money):
                 r=valid[key];group=(norm(r['plate']),r['base'])
                 if group not in summaries:summaries[group]=dict(plate=r['plate'],type=r['type'],base=r['base'],city=r['city'],km=km,rate=rate,revenue=Decimal(0))
                 g=summaries[group]
-                if g['rate']!=rate:abort(400)
+                if g['rate']!=rate:return jsonify(message='Custos por KM divergentes para a placa '+g['plate']),400
                 if km>g['km']:g.update(km=km,city=r['city'])
                 g['revenue']+=totals[key]
             for g in summaries.values():g['cost']=(g['km']*g['rate']*trips_count).quantize(Decimal('.01'))
@@ -204,7 +204,7 @@ def register(app, engine, root, html, money):
         <section><div class="sim-grid"><div><h2>Mapa de faturamento</h2><label>Selecionar por <select id="sim-mode"><option value="region">Região</option><option value="route">Rota</option><option value="city">Cidade</option></select></label><svg id="sim-map" viewBox="0 0 800 650"></svg><small id="sim-mapinfo">Clique no mapa para filtrar. Municípios fora de MT disponíveis nos filtros.</small></div><div><h2>Regiões</h2><div id="sim-ranking" class="sim-list"></div></div><div><h2>Cidades da seleção</h2><div id="sim-cities" class="sim-list"></div></div></div></section>
         <section><h2>Seleção operacional</h2><p>Faturamento geral do período: <b>{{money(general)}}</b> · Receita operacional elegível: <b>{{money(operational)}}</b> · Diferença de escopo: <b>{{money(general-operational)}}</b>. Vendas e itens sem placa, cidade ou base não integram a simulação.</p><div id="sim-filters" class="sim-filters"></div><p><button id="sim-clear">Limpar filtros</button></p><div class="metrics"><article>Faturamento<div class="big" id="sim-revenue"></div></article><article>Coleta<div class="big" id="sim-collect"></div></article><article>Serviços<div class="big" id="sim-service"></div></article></div></section>
         <section><h2>Simular custo da seleção</h2><p>Marque as cidades/rotas da viagem. O custo será consolidado por placa e base, usando apenas a maior distância de ida e volta.</p><div style="overflow:auto"><table><thead><tr><th><input type="checkbox" id="sim-all" aria-label="Selecionar todas"></th><th>Rota / mês</th><th>Base</th><th>Cidade / UF</th><th>Receita selecionada</th><th>KM ida + volta</th><th>R$/KM</th></tr></thead><tbody id="sim-trips"></tbody></table></div><p><label>Viagens <input id="sim-count" type="number" min="1" step="1" value="1" style="width:65px"></label> <button id="sim-auto">Calcular KM das linhas marcadas</button> <span id="sim-progress"></span> <button id="sim-calculate">Calcular custo da seleção</button> <button id="sim-pdf" style="background:#169875">Gerar relatório PDF</button></p><div id="sim-result"></div></section>
-        <script>const simData={{data|tojson}},simConfigs={{configs|tojson}},simTrips={{trips|tojson}};</script><script src="/static/cost-simulator.js?v=7"></script>""",data=data,configs=configs,trips=trips,general=general,operational=operational,basis=basis,show_zero=show_zero,year=year,month=month,months=[f'{i:02d}' for i in range(1,13)])
+        <script>const simData={{data|tojson}},simConfigs={{configs|tojson}},simTrips={{trips|tojson}};</script><script src="/static/cost-simulator.js?v=8"></script>""",data=data,configs=configs,trips=trips,general=general,operational=operational,basis=basis,show_zero=show_zero,year=year,month=month,months=[f'{i:02d}' for i in range(1,13)])
 
     @app.route('/cadastro-rotas',methods=['GET','POST'])
     def route_config():
