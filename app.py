@@ -22,7 +22,8 @@ FIELDS = ["item_id", "billing_id", "bm_id", "billing_date", "operation_date",
 NUMERIC = {"collected", "quantity", "amount"}
 FILTERS = ["branch", "state", "city", "plate", "driver", "transporter", "origin", "product", "service"]
 PLATE_RAW = "regexp_replace(UPPER(COALESCE(r.plate,'')),'[^A-Z0-9]','','g')"
-PLATE_SQL = "CASE WHEN regexp_replace(UPPER(COALESCE(r.plate,'')),'[^A-Z0-9]','','g') ~ '^[A-Z]{3}[0-9]{4}
+PLATE_SQL = "CASE WHEN regexp_replace(UPPER(COALESCE(r.plate,'')),'[^A-Z0-9]','','g') ~ '^[A-Z]{3}[0-9]{4}$' THEN substr(regexp_replace(UPPER(COALESCE(r.plate,'')),'[^A-Z0-9]','','g'),1,4)||translate(substr(regexp_replace(UPPER(COALESCE(r.plate,'')),'[^A-Z0-9]','','g'),5,1),'0123456789','ABCDEFGHIJ')||substr(regexp_replace(UPPER(COALESCE(r.plate,'')),'[^A-Z0-9]','','g'),6,2) ELSE regexp_replace(UPPER(COALESCE(r.plate,'')),'[^A-Z0-9]','','g') END"
+DIMS = {
     "city": "COALESCE(NULLIF(r.city,''),'Não identificada')",
     "state": "COALESCE(NULLIF(r.state,''),'Não identificado')",
     "region": "COALESCE(NULLIF(rg.region,''),'Não classificada')",
@@ -67,7 +68,8 @@ def setup_database():
                 item = {"id":str(vehicle["id"]), "plate":norm_plate(vehicle["place_number"]), "type":str(vehicle["vehicle_type"]).strip()}
                 db.execute(text("INSERT INTO fleet(vehicle_id,plate,vehicle_type) VALUES(:id,:plate,:type) ON CONFLICT(vehicle_id) DO UPDATE SET plate=excluded.plate,vehicle_type=excluded.vehicle_type"), item)
                 if item["plate"] in by_plate and by_plate[item["plate"]] != item["type"]:
-                    raise ValueError("Classificação divergente para placa " + item["plate"])
+                    by_plate[item["plate"]] = "Não classificado"
+                    continue
                 by_plate[item["plate"]] = item["type"]
             for plate, vehicle_type in by_plate.items():
                 db.execute(text("INSERT INTO fleet_plates(plate,vehicle_type) VALUES(:plate,:type) ON CONFLICT(plate) DO UPDATE SET vehicle_type=excluded.vehicle_type"), {"plate":plate,"type":vehicle_type})
