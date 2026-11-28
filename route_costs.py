@@ -13,7 +13,8 @@ from sqlalchemy import text
 def register(app, engine, root, html, money):
     def norm(v):
         key=''.join(c for c in unicodedata.normalize('NFKD',str(v or '').upper()) if c.isalnum())
-        return 'DAH7H63' if key=='DAH7763' else key
+        if len(key)==7 and key[:3].isalpha() and key[3:].isdigit(): key=key[:4]+'ABCDEFGHIJ'[int(key[4])]+key[5:]
+        return key
     def seed():
         result={}
         for line in (root/'data'/'rotas_custos.txt').read_text(encoding='utf-8').splitlines():
