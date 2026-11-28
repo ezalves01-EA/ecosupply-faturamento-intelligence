@@ -32,7 +32,7 @@ DIMS = {
     "product": "COALESCE(NULLIF(r.product,''),'Não identificado')",
     "service": "COALESCE(NULLIF(r.service,''),'Não identificado')",
     "plate": "COALESCE(NULLIF(r.plate,''),'Sem vínculo')",
-    "vehicle_type": "COALESCE(NULLIF(f.vehicle_type,''),NULLIF(fp.vehicle_type,''),'Não classificado')",
+    "vehicle_type": "COALESCE(NULLIF(fc.vehicle_type,''),'Não classificado')",
     "driver": "COALESCE(NULLIF(r.driver,''),'Sem vínculo')",
     "transporter": "CASE (CASE WHEN r.transporter IN ('1','2','3','6') THEN '6' ELSE r.transporter END) WHEN '5' THEN '5 · ECOSUPPLY RECICLADORA LTDA.' WHEN '6' THEN '6 · ECOSUPPLY RECICLADORA DO NORTE LTDA.' ELSE COALESCE(NULLIF(r.transporter,''),'Sem vínculo') END",
 }
@@ -68,6 +68,20 @@ def setup_database():
                 by_plate[item["plate"]] = item["type"]
             for plate, vehicle_type in by_plate.items():
                 db.execute(text("INSERT INTO fleet_plates(plate,vehicle_type) VALUES(:plate,:type) ON CONFLICT(plate) DO UPDATE SET vehicle_type=excluded.vehicle_type"), {"plate":plate,"type":vehicle_type})
+        db.execute(text("CREATE TABLE IF NOT EXISTS fleet_cost_types (plate VARCHAR(20) PRIMARY KEY, vehicle_type VARCHAR(100) NOT NULL)"))
+        source = ROOT / "data" / "rotas_custos.txt"
+        if source.exists():
+            types = {}
+            for line in source.read_text(encoding="utf-8").splitlines():
+                if not line.strip(): continue
+                plate, kind, rate, routes = line.split("|", 3)
+                key = norm_plate(plate)
+                if key in types and types[key] != kind.strip(): raise ValueError("Tipo divergente na tabela de custos: " + key)
+                types[key] = kind.strip()
+            if "DAH7H63" in types: types["DAH7763"] = types["DAH7H63"]
+            db.execute(text("DELETE FROM fleet_cost_types"))
+            for plate, kind in types.items():
+                db.execute(text("INSERT INTO fleet_cost_types(plate,vehicle_type) VALUES(:plate,:kind)"), {"plate":plate,"kind":kind})
         source = ROOT / "data" / "regioes.csv"
         if source.exists():
             with source.open(encoding="utf-8-sig", newline="") as file:
@@ -110,6 +124,7 @@ def conditions():
 def base_query(where):
     return (" FROM revenue r LEFT JOIN fleet f ON r.vehicle_id=f.vehicle_id"
             " LEFT JOIN fleet_plates fp ON r.plate=fp.plate"
+            " LEFT JOIN fleet_cost_types fc ON fc.plate=COALESCE(NULLIF(regexp_replace(UPPER(COALESCE(r.plate,'')),'[^A-Z0-9]','','g'),''),f.plate)"
             " LEFT JOIN regions rg ON UPPER(TRIM(r.city))=rg.city AND UPPER(TRIM(r.state))=rg.state"
             " WHERE " + where)
 
